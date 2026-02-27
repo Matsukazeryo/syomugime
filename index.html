@@ -209,6 +209,18 @@
           <tbody></tbody>
         </table>
       </div>
+
+      <h3>希望順位一覧（誰が第何希望になったか）</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+        各候補枠について、担当部屋が「第何希望で取れたか（希望外/未提出含む）」を表示します。
+      </p>
+      <div class="table-container" style="margin-bottom: 1rem;">
+        <table id="resultRankTableAdmin">
+          <thead><tr><th>候補枠</th><th>担当部屋番号</th><th>希望順位</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
       <button onclick="exportCSV()">CSV出力</button>
     </div>
   </div>
@@ -538,6 +550,7 @@
       pList.innerHTML += `<div class="participant-row"><span>部屋 ${r}</span><label class="toggle-switch"><input type="checkbox" onchange="toggleParticipant('${r}', this.checked)" ${isPart ? 'checked' : ''}><span class="slider"></span></label></div>`;
     });
     window.renderAdminResultTable();
+    window.renderAdminRankTable();
     window.renderAdminRequests();
   }
 
@@ -608,6 +621,7 @@ window.setAllParticipants = async function(val) {
   window.updateAdminAssignment = function(slot, val) {
     db.assignments[slot] = val;
     saveData();
+    window.renderAdminRankTable();
   }
 
   window.renderAdminResultTable = function() {
@@ -617,6 +631,28 @@ window.setAllParticipants = async function(val) {
       let selectHTML = `<select onchange="updateAdminAssignment('${slot}', this.value)"><option value="">-- 未定 --</option>`;
       db.rooms.forEach(r => { selectHTML += `<option value="${r}" ${db.assignments[slot] === r ? 'selected' : ''}>${r}</option>`; });
       tbody.innerHTML += `<tr><td>${slot}</td><td>${selectHTML}</select></td></tr>`;
+    });
+  }
+
+  // ある部屋がある候補枠を「第何希望」で取ったかを返す（希望外/未提出も含む）
+  window.getPreferenceRankLabel = function(room, slot) {
+    if (!room) return "-";
+    const p = db.participants?.[room];
+    if (!p || !Array.isArray(p.requests) || p.requests.length === 0) return "未提出";
+    const idx = p.requests.indexOf(slot);
+    if (idx === -1) return "希望外";
+    return `第${idx + 1}希望`;
+  }
+
+  window.renderAdminRankTable = function() {
+    const tbody = document.querySelector('#resultRankTableAdmin tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    db.slots.forEach(slot => {
+      const room = db.assignments?.[slot] || '';
+      const rankLabel = window.getPreferenceRankLabel(room, slot);
+      tbody.innerHTML += `<tr><td>${slot}</td><td><strong>${room || '-'}</strong></td><td>${rankLabel}</td></tr>`;
     });
   }
 
@@ -655,7 +691,8 @@ window.setAllParticipants = async function(val) {
     }
     
     await saveData(); 
-    window.renderAdminResultTable(); 
+    window.renderAdminResultTable();
+    window.renderAdminRankTable();
     alert("抽選完了！");
   }
 
