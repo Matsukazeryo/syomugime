@@ -147,10 +147,24 @@
       <button class="admin-tab" onclick="switchAdminTab('tab-data')">名簿・枠</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-requests')">希望状況</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-lottery')">抽選・結果</button>
+      <button class="admin-tab" onclick="switchAdminTab('tab-history')">履歴</button>
     </div>
 
     <div id="tab-settings" class="admin-panel active">
       <h2>基本設定</h2>
+
+      <h3 style="margin-top:0;">回（今回/次回）の管理</h3>
+      <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+        「今回」を履歴として保存してから、部屋番号や候補枠を変更して「次回」を新しく作成できます。
+      </p>
+      <label>現在編集している回</label>
+      <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:1rem;">
+        <select id="roundSelect" style="margin-bottom:0;"></select>
+        <button class="outline" onclick="createNextRoundFromCurrent()" style="white-space:nowrap;">今回を保存して次回を作成</button>
+      </div>
+      <label>回の名前（任意）</label>
+      <input type="text" id="roundName" placeholder="例：2026年6月 第1回" onchange="saveRoundName()">
+
       <label>管理者パスワードの変更</label>
       <div class="password-box">
         <input type="password" id="currentAdminPassword" placeholder="現在のパスワード">
@@ -200,6 +214,30 @@
     </div>
 
     <div id="tab-lottery" class="admin-panel">
+    <div id="tab-history" class="admin-panel">
+      <h2>過去の回（履歴）</h2>
+      <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
+        ここでは「保存済みの過去回」の結果を閲覧できます（編集はできません）。
+      </p>
+      <label>表示する回</label>
+      <select id="historySelect"></select>
+
+      <div class="table-container" style="margin-top: 1rem;">
+        <table id="historyResultTable">
+          <thead><tr><th>候補枠</th><th>担当部屋番号</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="table-container" style="margin-top: 1rem;">
+        <table id="historyRankTable">
+          <thead><tr><th>候補枠</th><th>担当部屋番号</th><th>希望順位</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <button onclick="exportHistoryCSV()">この回をCSV出力</button>
+    </div>
       <h2>抽選の実行</h2>
       <button onclick="runLottery()" style="margin-bottom: 1.5rem;">抽選を実行する</button>
       <h2>割当結果・手動修正</h2>
@@ -247,43 +285,132 @@
   const initialRooms = ["113","201","206","207","210","216","218","219","220","221","224","225","226","227","228","230","302","303","304","305","308","314","316","318","322","325","326","327","328","329","330","401","402","408","412","418","420","421","423","425","426","428","429","430","501","504","505","508","510","513","514","515","516","519","520","521","522","523","524","525","526","527"];
   const initialSlots = ["2025年6月23日(月)","2025年6月24日(火)","2025年6月25日(水)","2025年6月26日(木)","2025年6月27日(金)","2025年6月29日(日)朝","2025年6月29日(日)昼","2025年6月29日(日)夜","2025年6月30日(月)","2025年7月1日(火)","2025年7月2日(水)","2025年7月3日(木)","2025年7月4日(金)","2025年7月6日(日)朝","2025年7月6日(日)昼","2025年7月6日(日)夜","2025年7月7日(月)"];
 
-  let db = { rooms: [], slots: [], participants: {}, deadline: "", startPointer: 0, assignments: {}, adminPassword: "admin" };
+  // db v2: 複数回（round）を扱う
+  // 互換のため、旧形式（rooms/slots/...直下）も起動時に自動でv2へ移行する
+  let db = { adminPassword: "admin", currentRoundId: "", rounds: {}, historyOrder: [] };
   let currentStudentRoom = "";
+
+  const makeRoundId = () => `round-${Date.now()}`;
+  const nowISO = () => new Date().toISOString();
+
+  function getActiveRound() {
+    if (!db.currentRoundId || !db.rounds?.[db.currentRoundId]) {
+      // フォールバック（万一）
+      const rid = makeRoundId();
+      db.currentRoundId = rid;
+      db.rounds[rid] = {
+        id: rid,
+        name: "",
+        createdAt: nowISO(),
+        rooms: [],
+        slots: [],
+        participants: {},
+        deadline: "",
+        startPointer: 0,
+        assignments: {}
+      };
+      if (!db.historyOrder) db.historyOrder = [];
+      if (!db.historyOrder.includes(rid)) db.historyOrder.unshift(rid);
+    }
+    return db.rounds[db.currentRoundId];
+  }
+
+  function normalizeParticipants(round) {
+    if (!round.participants) round.participants = {};
+    (round.rooms || []).forEach(r => {
+      if (!round.participants[r]) round.participants[r] = { isParticipating: true, requests: [] };
+      if (typeof round.participants[r].isParticipating !== 'boolean') round.participants[r].isParticipating = true;
+      if (!Array.isArray(round.participants[r].requests)) round.participants[r].requests = [];
+    });
+  }
+
+  function migrateIfNeeded() {
+    // 旧形式: db.rooms が存在する場合、v2へ移行
+    if (Array.isArray(db.rooms) || Array.isArray(db.slots) || db.participants || db.assignments) {
+      const rid = makeRoundId();
+      const round = {
+        id: rid,
+        name: "（移行データ）",
+        createdAt: nowISO(),
+        rooms: Array.isArray(db.rooms) ? db.rooms : [],
+        slots: Array.isArray(db.slots) ? db.slots : [],
+        participants: db.participants || {},
+        deadline: db.deadline || "",
+        startPointer: typeof db.startPointer === 'number' ? db.startPointer : 0,
+        assignments: db.assignments || {}
+      };
+      normalizeParticipants(round);
+      const adminPassword = db.adminPassword || "admin";
+
+      db = {
+        adminPassword,
+        currentRoundId: rid,
+        rounds: { [rid]: round },
+        historyOrder: [rid]
+      };
+    }
+
+    // v2でも安全のため
+    if (!db.rounds) db.rounds = {};
+    if (!db.historyOrder) db.historyOrder = [];
+    if (!db.currentRoundId) {
+      const rid = makeRoundId();
+      db.currentRoundId = rid;
+      db.rounds[rid] = {
+        id: rid,
+        name: "",
+        createdAt: nowISO(),
+        rooms: [],
+        slots: [],
+        participants: {},
+        deadline: "",
+        startPointer: 0,
+        assignments: {}
+      };
+      db.historyOrder.unshift(rid);
+    }
+
+    // active round正規化
+    const round = getActiveRound();
+    normalizeParticipants(round);
+    if (!db.adminPassword) db.adminPassword = "admin";
+  }
 
   // アプリ起動時のデータ読み込み
   window.onload = async () => {
     try {
       const docSnap = await getDoc(dbRef);
       if (!docSnap.exists()) {
-        // 初回起動：Firestoreにデータがない場合は初期データを作成
-        db.rooms = [...initialRooms];
-        db.slots = [...initialSlots];
-        db.rooms.forEach(r => db.participants[r] = { isParticipating: true, requests: [] });
+        // 初回起動：v2形式で「今回」roundを作成
+        const rid = makeRoundId();
+        const round = {
+          id: rid,
+          name: "今回",
+          createdAt: nowISO(),
+          rooms: [...initialRooms],
+          slots: [...initialSlots],
+          participants: {},
+          deadline: "",
+          startPointer: 0,
+          assignments: {}
+        };
+        round.rooms.forEach(r => round.participants[r] = { isParticipating: true, requests: [] });
+
+        db = { adminPassword: "admin", currentRoundId: rid, rounds: { [rid]: round }, historyOrder: [rid] };
         await setDoc(dbRef, db);
       } else {
         db = docSnap.data();
       }
 
-      // 互換性: participants / isParticipating が欠けている古いデータを正規化
-      if (!db.participants) db.participants = {};
-      (db.rooms || []).forEach(r => {
-        if (!db.participants[r]) db.participants[r] = { isParticipating: true, requests: [] };
-        if (typeof db.participants[r].isParticipating !== 'boolean') db.participants[r].isParticipating = true;
-        if (!Array.isArray(db.participants[r].requests)) db.participants[r].requests = [];
-      });
+      // 旧→新の移行と正規化
+      migrateIfNeeded();
 
       // リアルタイムリスナーの登録（データが更新されるたびに呼ばれる）
       onSnapshot(dbRef, (snapshot) => {
         if (snapshot.exists()) {
           db = snapshot.data();
-          // 互換性: participants / isParticipating が欠けている古いデータを正規化（UI側）
-          if (!db.participants) db.participants = {};
-          (db.rooms || []).forEach(r => {
-            if (!db.participants[r]) db.participants[r] = { isParticipating: true, requests: [] };
-            if (typeof db.participants[r].isParticipating !== 'boolean') db.participants[r].isParticipating = true;
-            if (!Array.isArray(db.participants[r].requests)) db.participants[r].requests = [];
-          });
-          if (!db.adminPassword) db.adminPassword = "admin";
+          // 旧→新の移行と正規化（UI側）
+          migrateIfNeeded();
           
           // 開いている画面に合わせてUIを自動更新
           const isAdminMode = document.getElementById('adminToggle').checked;
@@ -318,12 +445,19 @@
 
   // --- 以降、HTMLから呼び出せるように window オブジェクトに関数を紐付け ---
 
-  window.isDeadlinePassed = function() { return db.deadline && new Date() > new Date(db.deadline); }
-  window.isResultFinalized = function() { return window.isDeadlinePassed() || Object.keys(db.assignments).length > 0; }
+  window.isDeadlinePassed = function() {
+    const round = getActiveRound();
+    return round.deadline && new Date() > new Date(round.deadline);
+  }
+  window.isResultFinalized = function() {
+    const round = getActiveRound();
+    return window.isDeadlinePassed() || Object.keys(round.assignments || {}).length > 0;
+  }
 
   window.getSlotStats = function(slotName) {
+    const round = getActiveRound();
     let stats = [0, 0, 0, 0, 0];
-    Object.values(db.participants).forEach(p => {
+    Object.values(round.participants || {}).forEach(p => {
       if (p.isParticipating && p.requests) {
         const idx = p.requests.indexOf(slotName);
         if (idx !== -1 && idx < 5) stats[idx]++;
@@ -333,22 +467,23 @@
   }
 
   window.renderStudentView = function() {
+    const round = getActiveRound();
     const select = document.getElementById('studentRoomSelect');
     // 現在の選択を保持
     const currentVal = select.value;
     select.innerHTML = '<option value="">-- 選択してください --</option>';
-    db.rooms.forEach(r => {
+    (round.rooms || []).forEach(r => {
       const opt = new Option(r, r);
-      if(r === currentVal) opt.selected = true;
+      if (r === currentVal) opt.selected = true;
       select.appendChild(opt);
     });
-    
+
     if (window.isResultFinalized()) {
       document.getElementById('globalResultsArea').style.display = 'block';
       const tbody = document.querySelector('#globalResultTable tbody');
       tbody.innerHTML = '';
-      db.slots.forEach(slot => {
-        const assigned = db.assignments[slot] || '未定';
+      (round.slots || []).forEach(slot => {
+        const assigned = (round.assignments || {})[slot] || '未定';
         tbody.innerHTML += `<tr><td>${slot}</td><td><strong>${assigned}</strong></td></tr>`;
       });
     } else {
@@ -371,19 +506,18 @@
     if (!room) { alert("部屋番号を選択してください。"); return; }
     currentStudentRoom = room;
     document.getElementById('currentRoomDisplay').textContent = room;
+    const round = getActiveRound();
 
-    const currentReqs = db.participants[room]?.requests || [];
-    // const isParticipating = db.participants[room]?.isParticipating ?? true;
-    // 新しい論理: isParticipatingは必ずboolean型で正規化されているので、!!で取得
-    const isParticipating = !!db.participants[room]?.isParticipating;
+    const currentReqs = round.participants[room]?.requests || [];
+    const isParticipating = !!round.participants[room]?.isParticipating;
 
     if (window.isResultFinalized()) {
       document.getElementById('submissionArea').style.display = 'none';
       document.getElementById('personalResultArea').style.display = 'block';
 
       let assignedSlots = [];
-      for (let slot in db.assignments) {
-        if (db.assignments[slot] === room) assignedSlots.push(slot);
+      for (let slot in (round.assignments || {})) {
+        if ((round.assignments || {})[slot] === room) assignedSlots.push(slot);
       }
       
       let html = `<h3 style="margin-top:0; color:var(--text);">あなたの割当結果</h3>`;
@@ -436,7 +570,7 @@
         wrap.innerHTML = `<label>第${i}希望</label><select id="req${i}"><option value="">-- 希望なし --</option></select>`;
         container.appendChild(wrap);
         const sel = document.getElementById(`req${i}`);
-        db.slots.forEach(slot => sel.appendChild(new Option(slot, slot)));
+        (round.slots || []).forEach(slot => sel.appendChild(new Option(slot, slot)));
         if (currentReqs[i-1]) sel.value = currentReqs[i-1];
       }
       
@@ -448,10 +582,11 @@
   }
 
   window.renderSlotStatsTable = function() {
+    const round = getActiveRound();
     const tbody = document.querySelector('#slotStatsTable tbody');
-    if(!tbody) return;
+    if (!tbody) return;
     tbody.innerHTML = '';
-    db.slots.forEach(slot => {
+    (round.slots || []).forEach(slot => {
       const stats = window.getSlotStats(slot);
       const total = stats.reduce((sum, val) => sum + val, 0);
       tbody.innerHTML += `<tr><td>${slot}</td><td>${stats[0]}</td><td>${stats[1]}</td><td>${stats[2]}</td><td>${stats[3]}</td><td>${stats[4]}</td><td><strong>${total}</strong></td></tr>`;
@@ -459,7 +594,8 @@
   }
 
   window.submitRequest = async function() {
-    if (!(db.participants[currentStudentRoom]?.isParticipating ?? true)) {
+    const round = getActiveRound();
+    if (!(round.participants[currentStudentRoom]?.isParticipating ?? true)) {
       alert("参加フラグがOFFのため、希望を提出できません。");
       return;
     }
@@ -471,19 +607,19 @@
     for (let i = 1; i <= 5; i++) {
       const val = document.getElementById(`req${i}`).value;
       if (val) {
-        if (reqs.includes(val)) { 
-          alert("希望枠に重複があります。別々の枠を選んでください。"); 
+        if (reqs.includes(val)) {
+          alert("希望枠に重複があります。別々の枠を選んでください。");
           btn.disabled = false; btn.textContent = "提出する";
-          return; 
+          return;
         }
         reqs.push(val);
       }
     }
-    if (!db.participants[currentStudentRoom]) db.participants[currentStudentRoom] = { isParticipating: true, requests: [] };
-    db.participants[currentStudentRoom].requests = reqs;
-    
+    if (!round.participants[currentStudentRoom]) round.participants[currentStudentRoom] = { isParticipating: true, requests: [] };
+    round.participants[currentStudentRoom].requests = reqs;
+
     await saveData();
-    
+
     alert("希望を提出しました！");
     btn.disabled = false; btn.textContent = "提出する";
     window.goToStep1();
@@ -535,40 +671,68 @@
     document.querySelector(`button[onclick="switchAdminTab('${tabId}')"]`).classList.add('active');
     document.getElementById(tabId).classList.add('active');
     if (tabId === 'tab-requests') window.renderAdminRequests();
+    if (tabId === 'tab-history') window.renderHistoryPanel();
   }
 
   window.loadAdminData = function() {
-    document.getElementById('adminDeadline').value = db.deadline || "";
-    document.getElementById('adminPointer').value = db.startPointer || 0;
-    document.getElementById('adminRooms').value = db.rooms.join('\n');
-    document.getElementById('adminSlots').value = db.slots.join('\n');
-    
+    const round = getActiveRound();
+
+    // 回セレクト
+    const roundSelect = document.getElementById('roundSelect');
+    roundSelect.innerHTML = '';
+    // 新しい順に表示（historyOrderの先頭が最新）
+    (db.historyOrder || []).forEach(rid => {
+      const r = db.rounds?.[rid];
+      if (!r) return;
+      const label = `${r.name || '（無名）'} / ${new Date(r.createdAt || Date.now()).toLocaleString()}`;
+      const opt = new Option(label, rid);
+      if (rid === db.currentRoundId) opt.selected = true;
+      roundSelect.appendChild(opt);
+    });
+    roundSelect.onchange = async () => {
+      db.currentRoundId = roundSelect.value;
+      await saveData();
+      window.loadAdminData();
+    };
+
+    document.getElementById('roundName').value = round.name || '';
+
+    // 通常設定
+    document.getElementById('adminDeadline').value = round.deadline || "";
+    document.getElementById('adminPointer').value = round.startPointer || 0;
+    document.getElementById('adminRooms').value = (round.rooms || []).join('\n');
+    document.getElementById('adminSlots').value = (round.slots || []).join('\n');
+
     const pList = document.getElementById('participantListAdmin');
     pList.innerHTML = '';
-    db.rooms.forEach(r => {
-      const isPart = db.participants[r]?.isParticipating ?? true;
+    (round.rooms || []).forEach(r => {
+      const isPart = round.participants[r]?.isParticipating ?? true;
       pList.innerHTML += `<div class="participant-row"><span>部屋 ${r}</span><label class="toggle-switch"><input type="checkbox" onchange="toggleParticipant('${r}', this.checked)" ${isPart ? 'checked' : ''}><span class="slider"></span></label></div>`;
     });
+
     window.renderAdminResultTable();
     window.renderAdminRankTable();
     window.renderAdminRequests();
+    window.renderHistoryPanel();
   }
 
   window.renderAdminRequests = function() {
+    const round = getActiveRound();
+
     const roomTbody = document.querySelector('#adminRoomRequestsTable tbody');
     roomTbody.innerHTML = '';
-    db.rooms.forEach(r => {
-      const p = db.participants[r] || { isParticipating: true, requests: [] };
-      const reqs = p.requests;
+    (round.rooms || []).forEach(r => {
+      const p = round.participants[r] || { isParticipating: true, requests: [] };
+      const reqs = p.requests || [];
       roomTbody.innerHTML += `<tr><td>${r}</td><td>${p.isParticipating ? 'ON' : 'OFF'}</td><td>${reqs[0] || '-'}</td><td>${reqs[1] || '-'}</td><td>${reqs[2] || '-'}</td><td>${reqs[3] || '-'}</td><td>${reqs[4] || '-'}</td></tr>`;
     });
 
     const slotTbody = document.querySelector('#adminSlotRequestsTable tbody');
     slotTbody.innerHTML = '';
-    db.slots.forEach(slot => {
+    (round.slots || []).forEach(slot => {
       let reqRooms = [[], [], [], [], []];
-      db.rooms.forEach(r => {
-        const p = db.participants[r];
+      (round.rooms || []).forEach(r => {
+        const p = round.participants[r];
         if (p && p.isParticipating && p.requests) {
           const idx = p.requests.indexOf(slot);
           if (idx !== -1 && idx < 5) reqRooms[idx].push(r);
@@ -579,39 +743,41 @@
   }
 
   window.saveAdminSettings = function() {
-    db.deadline = document.getElementById('adminDeadline').value;
-    db.startPointer = parseInt(document.getElementById('adminPointer').value) || 0;
-    saveData(); 
+    const round = getActiveRound();
+    round.deadline = document.getElementById('adminDeadline').value;
+    round.startPointer = parseInt(document.getElementById('adminPointer').value) || 0;
+    saveData();
   }
 
   window.saveLists = async function() {
-    db.rooms = document.getElementById('adminRooms').value.split('\n').map(s => s.trim()).filter(s => s);
-    db.slots = document.getElementById('adminSlots').value.split('\n').map(s => s.trim()).filter(s => s);
-    
+    const round = getActiveRound();
+    round.rooms = document.getElementById('adminRooms').value.split('\n').map(s => s.trim()).filter(s => s);
+    round.slots = document.getElementById('adminSlots').value.split('\n').map(s => s.trim()).filter(s => s);
+
     // 新しい部屋が追加された場合の初期化
-    db.rooms.forEach(r => {
-      if (!db.participants[r]) db.participants[r] = { isParticipating: true, requests: [] };
-    });
-    
-    await saveData(); 
-    window.loadAdminData(); 
+    normalizeParticipants(round);
+
+    await saveData();
+    window.loadAdminData();
     alert("更新しました。");
   }
 
 window.toggleParticipant = async function(room, val) {
-  if (!db.participants) db.participants = {};
-  if (!db.participants[room]) db.participants[room] = { isParticipating: true, requests: [] };
-  db.participants[room].isParticipating = !!val;
-  if (!Array.isArray(db.participants[room].requests)) db.participants[room].requests = [];
+  const round = getActiveRound();
+  if (!round.participants) round.participants = {};
+  if (!round.participants[room]) round.participants[room] = { isParticipating: true, requests: [] };
+  round.participants[room].isParticipating = !!val;
+  if (!Array.isArray(round.participants[room].requests)) round.participants[room].requests = [];
   await saveData();
 }
 
 window.setAllParticipants = async function(val) {
-  if (!db.participants) db.participants = {};
-  db.rooms.forEach(r => {
-    if (!db.participants[r]) db.participants[r] = { isParticipating: true, requests: [] };
-    db.participants[r].isParticipating = !!val;
-    if (!Array.isArray(db.participants[r].requests)) db.participants[r].requests = [];
+  const round = getActiveRound();
+  if (!round.participants) round.participants = {};
+  (round.rooms || []).forEach(r => {
+    if (!round.participants[r]) round.participants[r] = { isParticipating: true, requests: [] };
+    round.participants[r].isParticipating = !!val;
+    if (!Array.isArray(round.participants[r].requests)) round.participants[r].requests = [];
   });
   await saveData();
   window.loadAdminData();
@@ -619,25 +785,29 @@ window.setAllParticipants = async function(val) {
 
   // 手動修正をクラウドに保存する関数
   window.updateAdminAssignment = function(slot, val) {
-    db.assignments[slot] = val;
+    const round = getActiveRound();
+    if (!round.assignments) round.assignments = {};
+    round.assignments[slot] = val;
     saveData();
     window.renderAdminRankTable();
   }
 
   window.renderAdminResultTable = function() {
+    const round = getActiveRound();
     const tbody = document.querySelector('#resultTableAdmin tbody');
     tbody.innerHTML = '';
-    db.slots.forEach(slot => {
+    (round.slots || []).forEach(slot => {
       let selectHTML = `<select onchange="updateAdminAssignment('${slot}', this.value)"><option value="">-- 未定 --</option>`;
-      db.rooms.forEach(r => { selectHTML += `<option value="${r}" ${db.assignments[slot] === r ? 'selected' : ''}>${r}</option>`; });
+      (round.rooms || []).forEach(r => { selectHTML += `<option value="${r}" ${(round.assignments || {})[slot] === r ? 'selected' : ''}>${r}</option>`; });
       tbody.innerHTML += `<tr><td>${slot}</td><td>${selectHTML}</select></td></tr>`;
     });
   }
 
   // ある部屋がある候補枠を「第何希望」で取ったかを返す（希望外/未提出も含む）
   window.getPreferenceRankLabel = function(room, slot) {
+    const round = getActiveRound();
     if (!room) return "-";
-    const p = db.participants?.[room];
+    const p = round.participants?.[room];
     if (!p || !Array.isArray(p.requests) || p.requests.length === 0) return "未提出";
     const idx = p.requests.indexOf(slot);
     if (idx === -1) return "希望外";
@@ -645,63 +815,166 @@ window.setAllParticipants = async function(val) {
   }
 
   window.renderAdminRankTable = function() {
+    const round = getActiveRound();
     const tbody = document.querySelector('#resultRankTableAdmin tbody');
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    db.slots.forEach(slot => {
-      const room = db.assignments?.[slot] || '';
+    (round.slots || []).forEach(slot => {
+      const room = (round.assignments || {})[slot] || '';
       const rankLabel = window.getPreferenceRankLabel(room, slot);
       tbody.innerHTML += `<tr><td>${slot}</td><td><strong>${room || '-'}</strong></td><td>${rankLabel}</td></tr>`;
     });
   }
 
   window.runLottery = async function() {
+    const round = getActiveRound();
     if (!confirm("抽選を実行しますか？")) return;
-    const activeRooms = db.rooms.filter(r => db.participants[r]?.isParticipating);
-    if (!activeRooms.length || !db.slots.length) return alert("参加者または候補枠がありません。");
+    const activeRooms = (round.rooms || []).filter(r => round.participants[r]?.isParticipating);
+    if (!activeRooms.length || !(round.slots || []).length) return alert("参加者または候補枠がありません。");
 
     let targetQueue = [];
-    let P = activeRooms.length, S = db.slots.length;
-    let currentPtr = db.startPointer % P;
+    let P = activeRooms.length, S = round.slots.length;
+    let currentPtr = (round.startPointer || 0) % P;
     for (let i = 0; i < S; i++) targetQueue.push(activeRooms[(currentPtr + i) % P]);
-    
-    db.startPointer = (currentPtr + S) % P;
-    document.getElementById('adminPointer').value = db.startPointer;
 
-    db.assignments = {};
-    let availableSlots = [...db.slots];
+    round.startPointer = (currentPtr + S) % P;
+    document.getElementById('adminPointer').value = round.startPointer;
+
+    round.assignments = {};
+    let availableSlots = [...round.slots];
     const shuffle = (a) => { for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 
     for (let rank = 0; rank < 5; rank++) {
       let unassigned = [];
       shuffle(targetQueue).forEach(room => {
-        const desired = (db.participants[room]?.requests || [])[rank];
+        const desired = (round.participants[room]?.requests || [])[rank];
         if (desired && availableSlots.includes(desired)) {
-          db.assignments[desired] = room;
+          round.assignments[desired] = room;
           availableSlots = availableSlots.filter(s => s !== desired);
         } else unassigned.push(room);
       });
       targetQueue = unassigned;
     }
-    
+
     shuffle(targetQueue); shuffle(availableSlots);
     for (let i = 0; i < targetQueue.length; i++) {
-      if (i < availableSlots.length) db.assignments[availableSlots[i]] = targetQueue[i];
+      if (i < availableSlots.length) round.assignments[availableSlots[i]] = targetQueue[i];
     }
-    
-    await saveData(); 
+
+    await saveData();
     window.renderAdminResultTable();
     window.renderAdminRankTable();
     alert("抽選完了！");
   }
 
   window.exportCSV = function() {
+    const round = getActiveRound();
     let csvContent = "data:text/csv;charset=utf-8,\uFEFF候補枠,担当部屋番号\n";
-    db.slots.forEach(s => csvContent += `"${s}","${db.assignments[s] || ""}"\n`);
+    (round.slots || []).forEach(s => csvContent += `"${s}","${(round.assignments || {})[s] || ""}"\n`);
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI(csvContent));
     link.setAttribute("download", "dormitory_assignment.csv");
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  }
+
+  // --- 追加: 回の名前保存、次回作成、履歴表示、履歴CSV出力 ---
+  window.saveRoundName = async function() {
+    const round = getActiveRound();
+    round.name = document.getElementById('roundName').value || '';
+    await saveData();
+    window.loadAdminData();
+  }
+
+  window.createNextRoundFromCurrent = async function() {
+    const current = getActiveRound();
+
+    // 今回を「履歴として残す」ため、現在のroundはそのまま保持し、次回roundを新規作成してアクティブに切り替える
+    const newId = makeRoundId();
+
+    // 次回は、rooms/slotsは“現在の編集内容”をベースにコピー（その後自由に編集できる）
+    const nextRound = {
+      id: newId,
+      name: "次回",
+      createdAt: nowISO(),
+      rooms: [...(current.rooms || [])],
+      slots: [...(current.slots || [])],
+      participants: {},
+      deadline: "",
+      startPointer: 0,
+      assignments: {}
+    };
+    (nextRound.rooms || []).forEach(r => nextRound.participants[r] = { isParticipating: true, requests: [] });
+
+    db.rounds[newId] = nextRound;
+    db.currentRoundId = newId;
+    if (!db.historyOrder) db.historyOrder = [];
+    db.historyOrder.unshift(newId);
+
+    await saveData();
+    alert("次回を作成しました。『名簿・枠』で部屋番号/候補枠を変更してから、抽選を実行してください。");
+    window.loadAdminData();
+  }
+
+  window.renderHistoryPanel = function() {
+    const select = document.getElementById('historySelect');
+    const resultTbody = document.querySelector('#historyResultTable tbody');
+    const rankTbody = document.querySelector('#historyRankTable tbody');
+    if (!select || !resultTbody || !rankTbody) return;
+
+    // 履歴セレクトは、現在の回も含めて表示（閲覧用）
+    select.innerHTML = '';
+    (db.historyOrder || []).forEach(rid => {
+      const r = db.rounds?.[rid];
+      if (!r) return;
+      const label = `${r.name || '（無名）'} / ${new Date(r.createdAt || Date.now()).toLocaleString()}`;
+      select.appendChild(new Option(label, rid));
+    });
+
+    // デフォルトは「ひとつ前（=保存された過去回）」があればそれ、なければ現在
+    const defaultRid = (db.historyOrder || [])[1] || db.currentRoundId;
+    select.value = defaultRid;
+
+    const render = (rid) => {
+      const r = db.rounds?.[rid];
+      if (!r) return;
+      resultTbody.innerHTML = '';
+      (r.slots || []).forEach(slot => {
+        const assigned = (r.assignments || {})[slot] || '未定';
+        resultTbody.innerHTML += `<tr><td>${slot}</td><td><strong>${assigned}</strong></td></tr>`;
+      });
+
+      rankTbody.innerHTML = '';
+      (r.slots || []).forEach(slot => {
+        const room = (r.assignments || {})[slot] || '';
+        // 履歴は、その回のparticipantsから判定
+        let rankLabel = "-";
+        if (room) {
+          const p = r.participants?.[room];
+          if (!p || !Array.isArray(p.requests) || p.requests.length === 0) rankLabel = "未提出";
+          else {
+            const idx = p.requests.indexOf(slot);
+            rankLabel = idx === -1 ? "希望外" : `第${idx + 1}希望`;
+          }
+        }
+        rankTbody.innerHTML += `<tr><td>${slot}</td><td><strong>${room || '-'}</strong></td><td>${rankLabel}</td></tr>`;
+      });
+    };
+
+    render(select.value);
+    select.onchange = () => render(select.value);
+  }
+
+  window.exportHistoryCSV = function() {
+    const rid = document.getElementById('historySelect')?.value;
+    const r = db.rounds?.[rid];
+    if (!r) return alert('回が見つかりません');
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF候補枠,担当部屋番号\n";
+    (r.slots || []).forEach(s => csvContent += `"${s}","${(r.assignments || {})[s] || ""}"\n`);
+    const safeName = (r.name || 'history').replace(/[\\/:*?\"<>|]/g, '_');
+    const link = document.createElement("a");
+    link.setAttribute("href", encodeURI(csvContent));
+    link.setAttribute("download", `${safeName}_assignment.csv`);
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   }
 </script>
