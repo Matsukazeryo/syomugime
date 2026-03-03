@@ -214,6 +214,30 @@
     </div>
 
     <div id="tab-lottery" class="admin-panel">
+      <h2>抽選の実行</h2>
+      <button onclick="runLottery()" style="margin-bottom: 1.5rem;">抽選を実行する</button>
+      <h2>割当結果・手動修正</h2>
+      <div class="table-container" style="margin-bottom: 1rem;">
+        <table id="resultTableAdmin">
+          <thead><tr><th>候補枠</th><th>担当部屋番号 (手動修正)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h3>希望順位一覧（誰が第何希望になったか）</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+        各候補枠について、担当部屋が「第何希望で取れたか（希望外/未提出含む）」を表示します。
+      </p>
+      <div class="table-container" style="margin-bottom: 1rem;">
+        <table id="resultRankTableAdmin">
+          <thead><tr><th>候補枠</th><th>担当部屋番号</th><th>希望順位</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <button onclick="exportCSV()">CSV出力</button>
+    </div>
+
     <div id="tab-history" class="admin-panel">
       <h2>過去の回（履歴）</h2>
       <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
@@ -237,29 +261,6 @@
       </div>
 
       <button onclick="exportHistoryCSV()">この回をCSV出力</button>
-    </div>
-      <h2>抽選の実行</h2>
-      <button onclick="runLottery()" style="margin-bottom: 1.5rem;">抽選を実行する</button>
-      <h2>割当結果・手動修正</h2>
-      <div class="table-container" style="margin-bottom: 1rem;">
-        <table id="resultTableAdmin">
-          <thead><tr><th>候補枠</th><th>担当部屋番号 (手動修正)</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <h3>希望順位一覧（誰が第何希望になったか）</h3>
-      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
-        各候補枠について、担当部屋が「第何希望で取れたか（希望外/未提出含む）」を表示します。
-      </p>
-      <div class="table-container" style="margin-bottom: 1rem;">
-        <table id="resultRankTableAdmin">
-          <thead><tr><th>候補枠</th><th>担当部屋番号</th><th>希望順位</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <button onclick="exportCSV()">CSV出力</button>
     </div>
   </div>
 </div>
@@ -827,45 +828,190 @@ window.setAllParticipants = async function(val) {
     });
   }
 
+  // ---- 整数計画問題(0-1割当)に近い形：目的関数(希望の満足度)最大化 + 制約(各枠は1人、各部屋は上限回数) ----
+  // 実装は「最小費用割当」に落として Hungarian(ハンガリアン) で近似的に解く
+
+  function prefWeightFor(room, slot, round) {
+    // 第1〜第5希望に大きい重み、それ以外は小さめ(希望外) / 未提出は0
+    const p = round.participants?.[room];
+    const reqs = (p && Array.isArray(p.requests)) ? p.requests : [];
+    if (!reqs.length) return 0;
+    const idx = reqs.indexOf(slot);
+    if (idx === -1) return -5; // 希望外は少しマイナス
+    // 好みの強さ（必要なら調整OK）
+    const weights = [100, 80, 60, 40, 20];
+    return weights[idx] ?? 0;
+  }
+
+  function buildRoomCopies(activeRooms, slotsLen) {
+    const P = activeRooms.length;
+    const S = slotsLen;
+    // 枠が多い場合に同一部屋が複数回割当され得るので、部屋をコピーして容量制約にする
+    const maxPerRoom = Math.max(1, Math.ceil(S / P));
+    const copies = [];
+    activeRooms.forEach((r) => {
+      for (let k = 0; k < maxPerRoom; k++) {
+        copies.push({ room: r, copyIndex: k });
+      }
+    });
+    return copies;
+  }
+
+  // Hungarian Algorithm (min-cost assignment) for a square matrix
+  // returns array `assignColForRow` where row i is assigned to column assignColForRow[i]
+  function hungarian(cost) {
+    const n = cost.length;
+    const u = new Array(n + 1).fill(0);
+    const v = new Array(n + 1).fill(0);
+    const p = new Array(n + 1).fill(0);
+    const way = new Array(n + 1).fill(0);
+
+    for (let i = 1; i <= n; i++) {
+      p[0] = i;
+      let j0 = 0;
+      const minv = new Array(n + 1).fill(Infinity);
+      const used = new Array(n + 1).fill(false);
+      do {
+        used[j0] = true;
+        const i0 = p[j0];
+        let delta = Infinity;
+        let j1 = 0;
+        for (let j = 1; j <= n; j++) {
+          if (used[j]) continue;
+          const cur = cost[i0 - 1][j - 1] - u[i0] - v[j];
+          if (cur < minv[j]) {
+            minv[j] = cur;
+            way[j] = j0;
+          }
+          if (minv[j] < delta) {
+            delta = minv[j];
+            j1 = j;
+          }
+        }
+        for (let j = 0; j <= n; j++) {
+          if (used[j]) {
+            u[p[j]] += delta;
+            v[j] -= delta;
+          } else {
+            minv[j] -= delta;
+          }
+        }
+        j0 = j1;
+      } while (p[j0] !== 0);
+
+      // augmenting
+      do {
+        const j1 = way[j0];
+        p[j0] = p[j1];
+        j0 = j1;
+      } while (j0 !== 0);
+    }
+
+    const assignColForRow = new Array(n).fill(-1);
+    for (let j = 1; j <= n; j++) {
+      if (p[j] > 0) assignColForRow[p[j] - 1] = j - 1;
+    }
+    return assignColForRow;
+  }
+
   window.runLottery = async function() {
     const round = getActiveRound();
     if (!confirm("抽選を実行しますか？")) return;
-    const activeRooms = (round.rooms || []).filter(r => round.participants[r]?.isParticipating);
-    if (!activeRooms.length || !(round.slots || []).length) return alert("参加者または候補枠がありません。");
 
-    let targetQueue = [];
-    let P = activeRooms.length, S = round.slots.length;
-    let currentPtr = (round.startPointer || 0) % P;
-    for (let i = 0; i < S; i++) targetQueue.push(activeRooms[(currentPtr + i) % P]);
+    const activeRooms = (round.rooms || []).filter(r => round.participants?.[r]?.isParticipating);
+    const slots = round.slots || [];
+    if (!activeRooms.length || !slots.length) return alert("参加者または候補枠がありません。");
 
-    round.startPointer = (currentPtr + S) % P;
-    document.getElementById('adminPointer').value = round.startPointer;
+    // 以前の「開始ポインタ」の公平性は、解の評価に小さなバイアスを入れて近似する
+    // 具体的には、開始ポインタから近い部屋ほど、わずかに有利(費用を小さく)にする
+    const P = activeRooms.length;
+    const ptr = (round.startPointer || 0) % P;
+    const orderIndex = {};
+    for (let i = 0; i < P; i++) {
+      orderIndex[activeRooms[(ptr + i) % P]] = i;
+    }
 
+    // 容量制約(同一部屋の複数割当)を部屋コピーで表現
+    const roomCopies = buildRoomCopies(activeRooms, slots.length);
+
+    // 正方行列にするため、必要ならダミー行/列を追加
+    const n = Math.max(slots.length, roomCopies.length);
+
+    // cost[row(slot)][col(roomCopy)] を作る（最小化）
+    // cost = penalty(複数回割当の抑制) - weight(希望満足度) - fairnessBonus
+    const fairnessEps = 0.1; // 小さいほど影響が弱い
+    const extraAssignPenalty = 15; // 2回目以降をなるべく抑えるペナルティ（必要なら調整OK）
+
+    const BIG = 10 ** 6;
+    const cost = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => {
+      // ダミー領域は大きめの費用（ただし完全に禁止はしない）
+      return 0;
+    }));
+
+    // 初期化
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) cost[i][j] = 0;
+    }
+
+    // 実データ領域
+    for (let si = 0; si < n; si++) {
+      for (let cj = 0; cj < n; cj++) {
+        // slot row
+        if (si >= slots.length) {
+          // ダミーslot：何に割り当ててもOK(費用0)
+          cost[si][cj] = 0;
+          continue;
+        }
+        // roomCopy col
+        if (cj >= roomCopies.length) {
+          // ダミーroom：枠が余るのを許す（費用は少し大きめ）
+          cost[si][cj] = 200;
+          continue;
+        }
+
+        const slot = slots[si];
+        const { room, copyIndex } = roomCopies[cj];
+
+        const w = prefWeightFor(room, slot, round);
+        const penalty = copyIndex * extraAssignPenalty;
+        const fair = (orderIndex[room] ?? 0) * fairnessEps;
+
+        // 目的：wを最大化したい → costでは -w
+        // 希望外(-5)の時は costが上がる。
+        cost[si][cj] = penalty - w + fair;
+      }
+    }
+
+    // Hungarian で最小費用割当
+    const assignColForRow = hungarian(cost);
+
+    // 結果を round.assignments に反映
     round.assignments = {};
-    let availableSlots = [...round.slots];
-    const shuffle = (a) => { for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
+    // まず未定で初期化
+    slots.forEach(s => { round.assignments[s] = ""; });
 
-    for (let rank = 0; rank < 5; rank++) {
-      let unassigned = [];
-      shuffle(targetQueue).forEach(room => {
-        const desired = (round.participants[room]?.requests || [])[rank];
-        if (desired && availableSlots.includes(desired)) {
-          round.assignments[desired] = room;
-          availableSlots = availableSlots.filter(s => s !== desired);
-        } else unassigned.push(room);
-      });
-      targetQueue = unassigned;
+    // slot(row) -> roomCopy(col) を読む
+    for (let si = 0; si < slots.length; si++) {
+      const cj = assignColForRow[si];
+      if (cj < 0) continue;
+      if (cj >= roomCopies.length) {
+        // ダミーroom（割当なし）
+        continue;
+      }
+      const slot = slots[si];
+      const room = roomCopies[cj].room;
+      round.assignments[slot] = room;
     }
 
-    shuffle(targetQueue); shuffle(availableSlots);
-    for (let i = 0; i < targetQueue.length; i++) {
-      if (i < availableSlots.length) round.assignments[availableSlots[i]] = targetQueue[i];
-    }
+    // 次回の公平性のためにポインタを更新（従来と同じ思想で、枠数分だけ進める）
+    // ※厳密なIPでの公平性ではないが、運用上の「順番が回っていく」を維持する
+    round.startPointer = (ptr + slots.length) % P;
+    document.getElementById('adminPointer').value = round.startPointer;
 
     await saveData();
     window.renderAdminResultTable();
     window.renderAdminRankTable();
-    alert("抽選完了！");
+    alert("抽選完了！（整数計画に近い最適化で割当しました）");
   }
 
   window.exportCSV = function() {
