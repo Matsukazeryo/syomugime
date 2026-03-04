@@ -973,14 +973,11 @@ window.setAllParticipants = async function(val) {
     const slots = round.slots || [];
     if (!activeRooms.length || !slots.length) return alert("参加者または候補枠がありません。");
 
-    // 以前の「開始ポインタ」の公平性は、解の評価に小さなバイアスを入れて近似する
-    // 具体的には、開始ポインタから近い部屋ほど、わずかに有利(費用を小さく)にする
-    const P = activeRooms.length;
-    const ptr = (round.startPointer || 0) % P;
-    const orderIndex = {};
-    for (let i = 0; i < P; i++) {
-      orderIndex[activeRooms[(ptr + i) % P]] = i;
-    }
+    // 公正性：開始ポインタ等の「順番による有利/不利」は一切入れない。
+    // 目的は「希望の満足度の合計が最大」になる割当を求めること。
+    // 枠数 > 参加人数のときは同一部屋が複数回割り当てられる必要があるため、
+    // 2回目以降にはペナルティをつけて“できるだけ分散”するようにする。
+    const extraAssignPenalty = 15; // 2回目以降をなるべく抑えるペナルティ（必要なら調整OK）
 
     // 容量制約(同一部屋の複数割当)を部屋コピーで表現
     const roomCopies = buildRoomCopies(activeRooms, slots.length);
@@ -989,11 +986,7 @@ window.setAllParticipants = async function(val) {
     const n = Math.max(slots.length, roomCopies.length);
 
     // cost[row(slot)][col(roomCopy)] を作る（最小化）
-    // cost = penalty(複数回割当の抑制) - weight(希望満足度) - fairnessBonus
-    const fairnessEps = 0.1; // 小さいほど影響が弱い
-    const extraAssignPenalty = 15; // 2回目以降をなるべく抑えるペナルティ（必要なら調整OK）
-
-    const BIG = 10 ** 6;
+    // cost = penalty(複数回割当の抑制) - weight(希望満足度)
     const cost = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => {
       // ダミー領域は大きめの費用（ただし完全に禁止はしない）
       return 0;
@@ -1025,11 +1018,10 @@ window.setAllParticipants = async function(val) {
 
         const w = prefWeightFor(room, slot, round);
         const penalty = copyIndex * extraAssignPenalty;
-        const fair = (orderIndex[room] ?? 0) * fairnessEps;
 
-        // 目的：wを最大化したい → costでは -w
-        // 希望外(-5)の時は costが上がる。
-        cost[si][cj] = penalty - w + fair;
+        // 目的：w（希望満足度）の合計を最大化したい → costでは -w
+        // 追加割当(2回目以降)は penalty で抑制する
+        cost[si][cj] = penalty - w;
       }
     }
 
@@ -1054,10 +1046,9 @@ window.setAllParticipants = async function(val) {
       round.assignments[slot] = room;
     }
 
-    // 次回の公平性のためにポインタを更新（従来と同じ思想で、枠数分だけ進める）
-    // ※厳密なIPでの公平性ではないが、運用上の「順番が回っていく」を維持する
-    round.startPointer = (ptr + slots.length) % P;
-    document.getElementById('adminPointer').value = round.startPointer;
+    // 開始ポインタは抽選ロジックに使わない（公正性のため）。
+    // UI上は値を維持し、変更もしない。
+    document.getElementById('adminPointer').value = round.startPointer || 0;
 
     await saveData();
     window.renderAdminResultTable();
