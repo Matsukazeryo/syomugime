@@ -894,17 +894,27 @@ window.setAllParticipants = async function(val) {
     return weights[idx] ?? 0;
   }
 
-  function buildRoomCopies(activeRooms, slotsLen) {
+  function buildRoomCopies(activeRooms, slotsLen, startPointer) {
     const P = activeRooms.length;
     const S = slotsLen;
-    // 枠が多い場合に同一部屋が複数回割当され得るので、部屋をコピーして容量制約にする
-    const maxPerRoom = Math.max(1, Math.ceil(S / P));
+
+    // 参加人数より枠が多い場合、誰かが複数回担当する必要がある。
+    // その「追加分（2回目,3回目...）」は startPointer から順に割り当てる（循環）。
+    // 例：S=10, P=8 なら、startPointerから2部屋が2回担当、それ以外は1回担当。
+
+    const base = Math.floor(S / P);      // 全員に必ず割り当てる回数
+    const rem = S % P;                  // 追加で+1回を担当する人数（startPointerから順）
+
     const copies = [];
-    activeRooms.forEach((r) => {
-      for (let k = 0; k < maxPerRoom; k++) {
-        copies.push({ room: r, copyIndex: k });
+
+    for (let i = 0; i < P; i++) {
+      const room = activeRooms[(startPointer + i) % P];
+      const count = base + (i < rem ? 1 : 0);
+      for (let k = 0; k < count; k++) {
+        copies.push({ room, copyIndex: k });
       }
-    });
+    }
+
     return copies;
   }
 
@@ -973,20 +983,21 @@ window.setAllParticipants = async function(val) {
     const slots = round.slots || [];
     if (!activeRooms.length || !slots.length) return alert("参加者または候補枠がありません。");
 
-    // 公正性：開始ポインタ等の「順番による有利/不利」は一切入れない。
-    // 目的は「希望の満足度の合計が最大」になる割当を求めること。
-    // 枠数 > 参加人数のときは同一部屋が複数回割り当てられる必要があるため、
-    // 2回目以降にはペナルティをつけて“できるだけ分散”するようにする。
-    const extraAssignPenalty = 15; // 2回目以降をなるべく抑えるペナルティ（必要なら調整OK）
+    // 公正性：希望の点数（満足度）の合計が最大になる割当を求める。
+    // ただし、枠数 > 参加人数 のときは「追加の担当(2回目,3回目...)」が必要。
+    // その追加分は startPointer から順に担当させる（循環）ことで、
+    // “誰が複数回になるか”をルールで明確化して説明可能にする。
 
     // 容量制約(同一部屋の複数割当)を部屋コピーで表現
-    const roomCopies = buildRoomCopies(activeRooms, slots.length);
+    const P = activeRooms.length;
+    const ptr = (round.startPointer || 0) % P;
+    const roomCopies = buildRoomCopies(activeRooms, slots.length, ptr);
 
     // 正方行列にするため、必要ならダミー行/列を追加
     const n = Math.max(slots.length, roomCopies.length);
 
     // cost[row(slot)][col(roomCopy)] を作る（最小化）
-    // cost = penalty(複数回割当の抑制) - weight(希望満足度)
+    // cost = -weight(希望満足度)
     const cost = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => {
       // ダミー領域は大きめの費用（ただし完全に禁止はしない）
       return 0;
@@ -1017,11 +1028,10 @@ window.setAllParticipants = async function(val) {
         const { room, copyIndex } = roomCopies[cj];
 
         const w = prefWeightFor(room, slot, round);
-        const penalty = copyIndex * extraAssignPenalty;
 
         // 目的：w（希望満足度）の合計を最大化したい → costでは -w
-        // 追加割当(2回目以降)は penalty で抑制する
-        cost[si][cj] = penalty - w;
+        // 追加の担当(2回目以降)を誰が持つかは「roomCopies の作り方」で既に決まっている
+        cost[si][cj] = -w;
       }
     }
 
@@ -1046,8 +1056,8 @@ window.setAllParticipants = async function(val) {
       round.assignments[slot] = room;
     }
 
-    // 開始ポインタは抽選ロジックに使わない（公正性のため）。
-    // UI上は値を維持し、変更もしない。
+    // startPointer は「枠が余ったときに誰が追加で担当するか」を決めるために使う。
+    // 抽選後に自動で更新はしない（管理者が必要に応じて調整）。
     document.getElementById('adminPointer').value = round.startPointer || 0;
 
     await saveData();
