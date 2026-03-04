@@ -90,6 +90,13 @@
 <div class="container" id="studentView">
   <div id="step1" class="card step-section active">
     <h2>部屋番号を選択してください</h2>
+    <div id="roundInfoStudent" class="status-box" style="margin-top: 0.75rem;">
+      <div style="font-weight: bold; margin-bottom: 0.25rem;">今回の庶務当の情報</div>
+      <div style="font-size: 0.95rem;">
+        <div>対象：<span id="roundTitleStudent">-</span></div>
+        <div>締切：<span id="roundDeadlineStudent">-</span></div>
+      </div>
+    </div>
     <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
       <select id="studentRoomSelect" style="margin-bottom: 0;"></select>
       <button onclick="goToStep2()" style="white-space: nowrap;">次へ</button>
@@ -109,6 +116,13 @@
 
   <div id="step2" class="card step-section">
     <h2>部屋：<span id="currentRoomDisplay" style="color: var(--primary);"></span></h2>
+    <div id="roundInfoStudentStep2" class="status-box" style="margin-top: 0.75rem;">
+      <div style="font-weight: bold; margin-bottom: 0.25rem;">今回の庶務当の情報</div>
+      <div style="font-size: 0.95rem;">
+        <div>対象：<span id="roundTitleStudent2">-</span></div>
+        <div>締切：<span id="roundDeadlineStudent2">-</span></div>
+      </div>
+    </div>
     
     <div id="submissionArea">
       <div id="currentStatusArea" class="status-box" style="display: none;"></div>
@@ -478,6 +492,43 @@
       if (r === currentVal) opt.selected = true;
       select.appendChild(opt);
     });
+
+    // 学生画面：今回の対象（回の名前）と締切を表示
+    const titleEl = document.getElementById('roundTitleStudent');
+    const deadlineEl = document.getElementById('roundDeadlineStudent');
+    if (titleEl) {
+      // 回の名前が空ならアプリのタイトルを表示
+      const fallbackTitle = document.title || '寮庶務当 割当';
+      titleEl.textContent = (round.name && round.name.trim()) ? round.name.trim() : fallbackTitle;
+    }
+    if (deadlineEl) {
+      if (round.deadline) {
+        const d = new Date(round.deadline);
+        if (isNaN(d.getTime())) {
+          deadlineEl.textContent = round.deadline;
+        } else {
+          deadlineEl.textContent = d.toLocaleString('ja-JP');
+        }
+      } else {
+        deadlineEl.textContent = '未設定';
+      }
+    }
+    // step2用にも同じ情報を表示
+    const titleEl2 = document.getElementById('roundTitleStudent2');
+    const deadlineEl2 = document.getElementById('roundDeadlineStudent2');
+    if (titleEl2) {
+      const fallbackTitle = document.title || '寮庶務当 割当';
+      titleEl2.textContent = (round.name && round.name.trim()) ? round.name.trim() : fallbackTitle;
+    }
+    if (deadlineEl2) {
+      if (round.deadline) {
+        const d = new Date(round.deadline);
+        if (isNaN(d.getTime())) deadlineEl2.textContent = round.deadline;
+        else deadlineEl2.textContent = d.toLocaleString('ja-JP');
+      } else {
+        deadlineEl2.textContent = '未設定';
+      }
+    }
 
     if (window.isResultFinalized()) {
       document.getElementById('globalResultsArea').style.display = 'block';
