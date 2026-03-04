@@ -125,6 +125,7 @@
     </div>
     
     <div id="submissionArea">
+      <div id="multiAssignNotice" class="alert" style="display:none; margin-bottom:1rem;"></div>
       <div id="currentStatusArea" class="status-box" style="display: none;"></div>
       <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
         第1〜第5希望まで選べます（すべて埋めなくても構いません）。<br>
@@ -188,8 +189,11 @@
       </div>
       <label>締切日時</label>
       <input type="datetime-local" id="adminDeadline" onchange="saveAdminSettings()">
-      <label>開始ポインタ（今回抽選を開始する部屋番号のインデックス: 0〜）</label>
-      <input type="number" id="adminPointer" min="0" onchange="saveAdminSettings()">
+      <label>開始ポインタ（抽選を開始する部屋番号）</label>
+      <select id="adminPointerRoom" onchange="saveAdminSettings()"></select>
+      <div style="font-size:0.85rem; color: var(--text-muted); margin-top:-0.75rem; margin-bottom:1rem;">
+        現在の参加者リスト上の開始位置（参考）: <span id="adminPointerIndexDisplay">-</span>
+      </div>
     </div>
 
     <div id="tab-participants" class="admin-panel">
@@ -567,6 +571,10 @@
       document.getElementById('submissionArea').style.display = 'none';
       document.getElementById('personalResultArea').style.display = 'block';
 
+      // --- Hide multi-assign notice on result screen ---
+      const notice = document.getElementById('multiAssignNotice');
+      if (notice) { notice.style.display = 'none'; notice.innerHTML = ''; }
+
       let assignedSlots = [];
       for (let slot in (round.assignments || {})) {
         if ((round.assignments || {})[slot] === room) assignedSlots.push(slot);
@@ -604,6 +612,43 @@
       }
       document.getElementById('submissionArea').style.display = 'block';
       document.getElementById('personalResultArea').style.display = 'none';
+
+      // --- 事前表示：今回「2回以上」当たる可能性がある部屋かどうか ---
+      // ルール：枠数 > 参加人数 のとき、追加の担当(+1回)は開始ポインタから順に割り当てる
+      const notice = document.getElementById('multiAssignNotice');
+      if (notice) {
+        const activeRooms = (round.rooms || []).filter(r => round.participants?.[r]?.isParticipating);
+        const P = activeRooms.length;
+        const S = (round.slots || []).length;
+
+        let ptr = 0;
+        if (P > 0) {
+          if (round.startPointerRoom) {
+            const idx = activeRooms.indexOf(round.startPointerRoom);
+            ptr = (idx !== -1) ? idx : ((round.startPointer || 0) % P);
+          } else {
+            ptr = (round.startPointer || 0) % P;
+          }
+        }
+
+        let count = 0;
+        if (P > 0) {
+          const base = Math.floor(S / P);
+          const rem = S % P;
+          const relIdx = (P > 0) ? (activeRooms.indexOf(room) - ptr + P) % P : -1;
+          if (relIdx >= 0) {
+            count = base + (relIdx < rem ? 1 : 0);
+          }
+        }
+
+        if (count >= 2) {
+          notice.style.display = 'block';
+          notice.innerHTML = `※今回の枠数と参加人数の都合により、あなたの部屋は <strong>${count}回</strong> 割り当て対象になる可能性があります（ルールに基づく事前表示）。`;
+        } else {
+          notice.style.display = 'none';
+          notice.innerHTML = '';
+        }
+      }
 
       const statusArea = document.getElementById('currentStatusArea');
       if (currentReqs.length > 0) {
@@ -751,7 +796,25 @@
 
     // 通常設定
     document.getElementById('adminDeadline').value = round.deadline || "";
-    document.getElementById('adminPointer').value = round.startPointer || 0;
+    // 開始ポインタ（部屋番号で選択）
+    const pointerSelect = document.getElementById('adminPointerRoom');
+    if (pointerSelect) {
+      pointerSelect.innerHTML = '';
+      (round.rooms || []).forEach(r => pointerSelect.appendChild(new Option(r, r)));
+
+      // 互換: startPointerRoom が無い場合は startPointer(インデックス) から推定
+      if (!round.startPointerRoom) {
+        const idx = Math.max(0, Math.min((round.startPointer || 0), (round.rooms || []).length - 1));
+        round.startPointerRoom = (round.rooms || [])[idx] || '';
+      }
+      pointerSelect.value = round.startPointerRoom || '';
+
+      // 参考表示: 現在の参加者リスト上のインデックス
+      const activeRoomsForIdx = (round.rooms || []).filter(r => round.participants?.[r]?.isParticipating);
+      const idxOnActive = round.startPointerRoom ? activeRoomsForIdx.indexOf(round.startPointerRoom) : -1;
+      const idxEl = document.getElementById('adminPointerIndexDisplay');
+      if (idxEl) idxEl.textContent = (idxOnActive >= 0) ? String(idxOnActive) : '-';
+    }
     document.getElementById('adminRooms').value = (round.rooms || []).join('\n');
     document.getElementById('adminSlots').value = (round.slots || []).join('\n');
 
@@ -797,7 +860,22 @@
   window.saveAdminSettings = function() {
     const round = getActiveRound();
     round.deadline = document.getElementById('adminDeadline').value;
-    round.startPointer = parseInt(document.getElementById('adminPointer').value) || 0;
+
+    // 開始ポインタは「部屋番号」で保存する（参加フラグのON/OFFに左右されても説明しやすい）
+    const sel = document.getElementById('adminPointerRoom');
+    const selectedRoom = sel ? sel.value : '';
+    round.startPointerRoom = selectedRoom || '';
+
+    // 互換のため startPointer(インデックス) も保存しておく（rooms配列上の位置）
+    const idxInRooms = (round.rooms || []).indexOf(round.startPointerRoom);
+    round.startPointer = (idxInRooms >= 0) ? idxInRooms : 0;
+
+    // 参考表示を更新
+    const activeRoomsForIdx = (round.rooms || []).filter(r => round.participants?.[r]?.isParticipating);
+    const idxOnActive = round.startPointerRoom ? activeRoomsForIdx.indexOf(round.startPointerRoom) : -1;
+    const idxEl = document.getElementById('adminPointerIndexDisplay');
+    if (idxEl) idxEl.textContent = (idxOnActive >= 0) ? String(idxOnActive) : '-';
+
     saveData();
   }
 
@@ -990,7 +1068,17 @@ window.setAllParticipants = async function(val) {
 
     // 容量制約(同一部屋の複数割当)を部屋コピーで表現
     const P = activeRooms.length;
-    const ptr = (round.startPointer || 0) % P;
+
+    // startPointerRoom（部屋番号指定）があればそれを優先し、現在の参加者リスト上の位置に変換
+    let ptr = 0;
+    if (round.startPointerRoom) {
+      const idx = activeRooms.indexOf(round.startPointerRoom);
+      if (idx !== -1) ptr = idx;
+      else ptr = (round.startPointer || 0) % P; // 互換フォールバック
+    } else {
+      ptr = (round.startPointer || 0) % P;
+    }
+
     const roomCopies = buildRoomCopies(activeRooms, slots.length, ptr);
 
     // 正方行列にするため、必要ならダミー行/列を追加
@@ -1058,7 +1146,10 @@ window.setAllParticipants = async function(val) {
 
     // startPointer は「枠が余ったときに誰が追加で担当するか」を決めるために使う。
     // 抽選後に自動で更新はしない（管理者が必要に応じて調整）。
-    document.getElementById('adminPointer').value = round.startPointer || 0;
+    const pointerSelect = document.getElementById('adminPointerRoom');
+    if (pointerSelect) pointerSelect.value = round.startPointerRoom || '';
+    const idxEl = document.getElementById('adminPointerIndexDisplay');
+    if (idxEl) idxEl.textContent = String(ptr);
 
     await saveData();
     window.renderAdminResultTable();
