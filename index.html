@@ -45,21 +45,7 @@
 
     .header-title-wrap { min-width: 0; }
     h1 { font-size: 1.25rem; color: var(--primary); margin-bottom: 0.15rem; }
-    .header-subtitle { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .header-controls { display: flex; align-items: center; gap: 0.75rem; }
-
-    .status-chip {
-      display: inline-flex;
-      align-items: center;
-      border: 1px solid #b6d4ff;
-      background: #eff6ff;
-      color: #1d4f91;
-      border-radius: 999px;
-      padding: 0.2rem 0.6rem;
-      font-size: 0.78rem;
-      font-weight: bold;
-      white-space: nowrap;
-    }
 
     .container { max-width: 980px; margin: 1.5rem auto 2.25rem; padding: 0 1rem; }
     .card {
@@ -91,6 +77,8 @@
     button.outline:hover { background-color: var(--primary); color: white; }
     button.ghost { background-color: #eef4ff; color: #1f4f94; border: 1px solid #cadcfb; }
     button.ghost:hover { background-color: #daeaff; }
+    button.danger { background-color: var(--danger); }
+    button.danger:hover { background-color: #c92a2a; }
     button:disabled { background-color: #c6d0dc; cursor: not-allowed; }
     
     input[type="datetime-local"], select, textarea, input[type="number"], input[type="password"], input[type="text"] {
@@ -123,27 +111,6 @@
     .step-section.active { display: block; animation: fadeIn 0.25s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     
-    .step-indicator {
-      display: flex;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
-      flex-wrap: wrap;
-    }
-    .step-pill {
-      border-radius: 999px;
-      border: 1px solid #d5dce8;
-      background: #f5f7fb;
-      color: #4f5b6b;
-      font-size: 0.82rem;
-      font-weight: 700;
-      padding: 0.22rem 0.75rem;
-    }
-    .step-pill.active {
-      background: #e8f2ff;
-      color: #1a4d91;
-      border-color: #9cc2fa;
-    }
-
     .good { color: var(--success) !important; }
     .warn { color: var(--warn) !important; }
     .danger { color: var(--danger) !important; }
@@ -251,13 +218,19 @@
       align-items: end;
       margin-bottom: 0.6rem;
     }
+    .danger-panel {
+      border: 1px solid #f4c2c2;
+      background: #fff4f4;
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
 
     /* ローディング画面 */
     #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(246,250,255,0.88); display: flex; justify-content: center; align-items: center; z-index: 9999; font-size: 1.15rem; font-weight: bold; color: var(--primary); }
 
     @media (max-width: 760px) {
       header { padding: 0.85rem 0.85rem; }
-      .header-subtitle { display: none; }
       .container { margin-top: 1rem; padding: 0 0.65rem; }
       .card { padding: 1rem; border-radius: 12px; }
       .input-row {
@@ -280,12 +253,9 @@
 <header>
   <div class="header-title-wrap">
     <h1>寮庶務当 割当</h1>
-    <div class="header-subtitle">部屋選択 → 希望提出 → 結果確認 の3ステップ</div>
   </div>
   <div class="header-controls">
-    <span id="modeChip" class="status-chip">学生モード</span>
-    <label class="toggle-switch">
-      <span style="font-size: 0.9rem; font-weight: bold;">管理者モード</span>
+    <label class="toggle-switch" aria-label="表示切り替え">
       <input type="checkbox" id="adminToggle" onchange="toggleAdminMode()">
       <span class="slider"></span>
     </label>
@@ -294,10 +264,6 @@
 
 <div class="container" id="studentView">
   <div id="step1" class="card step-section active">
-    <div class="step-indicator">
-      <span class="step-pill active">1. 部屋選択</span>
-      <span class="step-pill">2. 希望提出 / 結果確認</span>
-    </div>
     <h2>1. 部屋番号を選択</h2>
     <div id="roundInfoStudent" class="status-box" style="margin-top: 0.75rem;">
       <div style="font-weight: bold; margin-bottom: 0.25rem;">今回の庶務当の情報</div>
@@ -325,10 +291,6 @@
   </div>
 
   <div id="step2" class="card step-section">
-    <div class="step-indicator">
-      <span class="step-pill">1. 部屋選択</span>
-      <span class="step-pill active">2. 希望提出 / 結果確認</span>
-    </div>
     <h2>2. 希望提出 / 結果確認（部屋：<span id="currentRoomDisplay" style="color: var(--primary);"></span>）</h2>
     <div id="roundInfoStudentStep2" class="status-box" style="margin-top: 0.75rem;">
       <div style="font-weight: bold; margin-bottom: 0.25rem;">今回の庶務当の情報</div>
@@ -395,6 +357,7 @@
       <button class="admin-tab" onclick="switchAdminTab('tab-data')">名簿・枠</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-requests')">希望状況</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-lottery')">抽選・結果</button>
+      <button class="admin-tab" onclick="switchAdminTab('tab-cancel-lottery')">抽選取り消し</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-history')">履歴</button>
     </div>
     <div id="adminSummaryGrid" class="admin-summary-grid">
@@ -517,6 +480,23 @@
       </div>
 
       <button onclick="exportCSV()">CSV出力</button>
+    </div>
+
+    <div id="tab-cancel-lottery" class="admin-panel">
+      <h2>抽選取り消し</h2>
+      <div class="danger-panel">
+        <p style="font-size: 0.9rem; margin-bottom: 0.6rem;">
+          現在の割当結果を取り消すと、すべての候補枠の担当が未定に戻ります。希望提出データは消えません。
+        </p>
+        <div class="small-note" id="cancelLotterySummary">現在の割当: -</div>
+      </div>
+      <div class="table-container" style="margin-bottom: 1rem;">
+        <table id="cancelLotteryTable">
+          <thead><tr><th>候補枠</th><th>現在の担当</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <button class="danger" onclick="cancelLotteryResults()">抽選結果を取り消す</button>
     </div>
 
     <div id="tab-history" class="admin-panel">
@@ -703,6 +683,9 @@
             if (document.getElementById('tab-lottery').classList.contains('active')) {
               renderAdminResultTable();
               renderAdminRankTable();
+            }
+            if (document.getElementById('tab-cancel-lottery').classList.contains('active')) {
+              renderLotteryCancelPanel();
             }
           } else {
             if (document.getElementById('step1').classList.contains('active')) {
@@ -1154,24 +1137,20 @@
   window.toggleAdminMode = function() {
     const toggleBtn = document.getElementById('adminToggle');
     const isAdmin = toggleBtn.checked;
-    const modeChip = document.getElementById('modeChip');
     
     if (isAdmin) {
       const inputPass = prompt("管理者パスワードを入力してください:\n(初期パスワード: admin)");
       if (inputPass === db.adminPassword) {
         document.getElementById('studentView').style.display = 'none';
         document.getElementById('adminView').style.display = 'block';
-        if (modeChip) modeChip.textContent = '管理者モード';
         window.loadAdminData();
       } else {
         alert("パスワードが違います。");
         toggleBtn.checked = false;
-        if (modeChip) modeChip.textContent = '学生モード';
       }
     } else {
       document.getElementById('studentView').style.display = 'block';
       document.getElementById('adminView').style.display = 'none';
-      if (modeChip) modeChip.textContent = '学生モード';
       window.renderStudentView();
     }
   }
@@ -1202,6 +1181,7 @@
     document.getElementById(tabId).classList.add('active');
     if (tabId === 'tab-requests') window.renderAdminRequests();
     if (tabId === 'tab-participants') window.filterParticipantRows();
+    if (tabId === 'tab-cancel-lottery') window.renderLotteryCancelPanel();
     if (tabId === 'tab-history') window.renderHistoryPanel();
     window.updateAdminSummary();
   }
@@ -1264,6 +1244,7 @@
 
     window.renderAdminResultTable();
     window.renderAdminRankTable();
+    window.renderLotteryCancelPanel();
     window.renderAdminRequests();
     window.renderHistoryPanel();
   }
@@ -1361,6 +1342,7 @@ window.setAllParticipants = async function(val) {
     round.assignments[slot] = val;
     saveData();
     window.renderAdminRankTable();
+    window.renderLotteryCancelPanel();
     window.updateAdminSummary();
   }
 
@@ -1373,6 +1355,44 @@ window.setAllParticipants = async function(val) {
       (round.rooms || []).forEach(r => { selectHTML += `<option value="${r}" ${(round.assignments || {})[slot] === r ? 'selected' : ''}>${r}</option>`; });
       tbody.innerHTML += `<tr><td>${slot}</td><td>${selectHTML}</select></td></tr>`;
     });
+  }
+
+  window.renderLotteryCancelPanel = function() {
+    const round = getActiveRound();
+    const tbody = document.querySelector('#cancelLotteryTable tbody');
+    const summary = document.getElementById('cancelLotterySummary');
+    if (!tbody || !summary) return;
+
+    tbody.innerHTML = '';
+    const assignedEntries = (round.slots || []).map(slot => ({
+      slot,
+      room: (round.assignments || {})[slot] || ''
+    }));
+    const assignedCount = assignedEntries.filter(e => !!e.room).length;
+    summary.textContent = `現在の割当: ${assignedCount}/${(round.slots || []).length || 0}`;
+
+    assignedEntries.forEach(({ slot, room }) => {
+      tbody.innerHTML += `<tr><td>${slot}</td><td><strong>${room || '未定'}</strong></td></tr>`;
+    });
+  }
+
+  window.cancelLotteryResults = async function() {
+    const round = getActiveRound();
+    const assignedCount = Object.values(round.assignments || {}).filter(v => !!v).length;
+    if (assignedCount === 0) {
+      alert("取り消す割当結果がありません。");
+      return;
+    }
+    if (!confirm(`現在の割当 ${assignedCount} 件を取り消します。よろしいですか？`)) return;
+
+    round.assignments = {};
+    await saveData();
+
+    window.renderAdminResultTable();
+    window.renderAdminRankTable();
+    window.renderLotteryCancelPanel();
+    window.updateAdminSummary();
+    alert("抽選結果を取り消しました。");
   }
 
   // ある部屋がある候補枠を「第何希望」で取ったかを返す（希望外/未提出も含む）
@@ -1596,6 +1616,7 @@ window.setAllParticipants = async function(val) {
     await saveData();
     window.renderAdminResultTable();
     window.renderAdminRankTable();
+    window.renderLotteryCancelPanel();
     window.updateAdminSummary();
     alert("抽選完了！（整数計画に近い最適化で割当しました）");
   }
