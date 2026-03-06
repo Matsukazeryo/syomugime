@@ -144,34 +144,6 @@
       border-color: #9cc2fa;
     }
 
-    .quick-guide {
-      border: 1px solid #d8e4f7;
-      background: linear-gradient(135deg, #f6faff 0%, #edf4ff 100%);
-      border-radius: 10px;
-      padding: 0.85rem 1rem;
-      margin-bottom: 1rem;
-    }
-    .quick-guide-title { font-size: 0.9rem; font-weight: 700; margin-bottom: 0.35rem; color: #25508f; }
-    .quick-guide-list { margin: 0; padding-left: 1rem; color: #35506f; font-size: 0.87rem; }
-    .quick-guide-list li { margin-bottom: 0.18rem; }
-
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 0.55rem;
-      margin-bottom: 1rem;
-    }
-    .metric-card {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 0.65rem 0.75rem;
-      background: #fbfdff;
-    }
-    .metric-label { font-size: 0.76rem; color: var(--text-muted); margin-bottom: 0.2rem; }
-    .metric-value { font-size: 1.02rem; font-weight: 800; line-height: 1.2; }
-    .metric-value.good { color: var(--success); }
-    .metric-value.warn { color: var(--warn); }
-    .metric-value.danger { color: var(--danger); }
     .good { color: var(--success) !important; }
     .warn { color: var(--warn) !important; }
     .danger { color: var(--danger) !important; }
@@ -185,13 +157,6 @@
     }
     .input-row .input-inline {
       margin-bottom: 0;
-    }
-    .helper-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.45rem;
     }
     .muted { color: var(--text-muted); font-size: 0.83rem; }
 
@@ -334,32 +299,6 @@
       <span class="step-pill">2. 希望提出 / 結果確認</span>
     </div>
     <h2>1. 部屋番号を選択</h2>
-    <div class="quick-guide">
-      <div class="quick-guide-title">最短で使う流れ</div>
-      <ol class="quick-guide-list">
-        <li>自分の部屋番号を選ぶ</li>
-        <li>第1〜第5希望を選んで提出する</li>
-        <li>締切後に同じ画面から結果を確認する</li>
-      </ol>
-    </div>
-    <div class="metrics-grid">
-      <div class="metric-card">
-        <div class="metric-label">候補枠数</div>
-        <div class="metric-value" id="studentSlotCount">-</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">参加部屋数</div>
-        <div class="metric-value" id="studentParticipantCount">-</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">提出状況</div>
-        <div class="metric-value" id="studentSubmissionCount">-</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">現在ステータス</div>
-        <div class="metric-value" id="studentRoundState">-</div>
-      </div>
-    </div>
     <div id="roundInfoStudent" class="status-box" style="margin-top: 0.75rem;">
       <div style="font-weight: bold; margin-bottom: 0.25rem;">今回の庶務当の情報</div>
       <div style="font-size: 0.95rem;">
@@ -367,16 +306,9 @@
         <div>締切：<span id="roundDeadlineStudent">-</span></div>
       </div>
     </div>
-
-    <div class="helper-row">
-      <label for="studentRoomFilter" style="font-weight: bold;">あなたの部屋番号を選択</label>
-      <span id="visibleRoomCount" class="muted">表示: -</span>
-    </div>
+    <label for="studentRoomSelect" style="font-weight: bold;">あなたの部屋番号を選択</label>
     <div class="input-row">
-      <div>
-        <input type="text" id="studentRoomFilter" class="input-inline" placeholder="部屋番号を絞り込み（例: 4）" oninput="filterRoomOptions()" style="margin-bottom:0.5rem;">
-        <select id="studentRoomSelect" class="input-inline" style="margin-bottom: 0;"></select>
-      </div>
+      <select id="studentRoomSelect" class="input-inline" style="margin-bottom: 0;"></select>
       <button onclick="goToStep2()" style="white-space: nowrap;">この部屋で進む</button>
     </div>
 
@@ -786,15 +718,6 @@
 
       document.getElementById('loadingOverlay').style.display = 'none';
       renderStudentView();
-      const roomFilter = document.getElementById('studentRoomFilter');
-      if (roomFilter) {
-        roomFilter.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            window.goToStep2();
-          }
-        });
-      }
     } catch (error) {
       alert("データベースの接続に失敗しました。ページをリロードしてください。\n" + error);
     }
@@ -864,60 +787,6 @@
     return { text: `締切まで約${days}日`, tone: days <= 2 ? "warn" : "good" };
   }
 
-  function setMetricText(elementId, text, tone = "") {
-    const el = document.getElementById(elementId);
-    if (!el) return;
-    el.textContent = text;
-    el.classList.remove('good', 'warn', 'danger');
-    if (tone) el.classList.add(tone);
-  }
-
-  window.filterRoomOptions = function(preferredValue = null) {
-    const round = getActiveRound();
-    const select = document.getElementById('studentRoomSelect');
-    const filterInput = document.getElementById('studentRoomFilter');
-    if (!select || !filterInput) return;
-
-    const keyword = filterInput.value.trim().toLowerCase();
-    const currentVal = preferredValue !== null ? preferredValue : select.value;
-
-    select.innerHTML = '<option value="">-- 選択してください --</option>';
-    const filteredRooms = (round.rooms || []).filter(r => r.toLowerCase().includes(keyword));
-    filteredRooms.forEach(r => {
-      const opt = new Option(r, r);
-      if (r === currentVal) opt.selected = true;
-      select.appendChild(opt);
-    });
-
-    const countEl = document.getElementById('visibleRoomCount');
-    if (countEl) countEl.textContent = `表示: ${filteredRooms.length}件`;
-  }
-
-  window.updateStudentSummary = function() {
-    const round = getActiveRound();
-    const stats = getRoundStats(round);
-    const deadlineIndicator = getDeadlineIndicator(round.deadline);
-    const isFinalized = window.isResultFinalized();
-
-    setMetricText('studentSlotCount', String(stats.slotCount));
-    setMetricText('studentParticipantCount', String(stats.activeRooms));
-    setMetricText('studentSubmissionCount', `${stats.submittedRooms}/${stats.activeRooms || 0}`);
-
-    if (isFinalized) {
-      setMetricText('studentRoundState', '結果確認期間', 'good');
-    } else if (window.isDeadlinePassed()) {
-      setMetricText('studentRoundState', '締切後（抽選待ち）', 'warn');
-    } else {
-      setMetricText('studentRoundState', '希望提出受付中', 'good');
-    }
-
-    const deadlineEl = document.getElementById('roundDeadlineStudent');
-    if (deadlineEl) {
-      deadlineEl.classList.remove('good', 'warn', 'danger');
-      deadlineEl.classList.add(deadlineIndicator.tone);
-    }
-  }
-
   window.updateAdminSummary = function() {
     const round = getActiveRound();
     const stats = getRoundStats(round);
@@ -963,8 +832,14 @@
     const round = getActiveRound();
     const select = document.getElementById('studentRoomSelect');
     const currentVal = select ? select.value : '';
-    window.filterRoomOptions(currentVal);
-    window.updateStudentSummary();
+    if (select) {
+      select.innerHTML = '<option value="">-- 選択してください --</option>';
+      (round.rooms || []).forEach(r => {
+        const opt = new Option(r, r);
+        if (r === currentVal) opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
 
     // 学生画面：今回の対象（回の名前）と締切を表示
     const titleEl = document.getElementById('roundTitleStudent');
