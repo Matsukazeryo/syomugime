@@ -81,7 +81,7 @@
     button.danger:hover { background-color: #c92a2a; }
     button:disabled { background-color: #c6d0dc; cursor: not-allowed; }
     
-    input[type="datetime-local"], select, textarea, input[type="number"], input[type="password"], input[type="text"] {
+    input[type="datetime-local"], input[type="date"], select, textarea, input[type="number"], input[type="password"], input[type="text"] {
       width: 100%;
       padding: 0.55rem 0.65rem;
       margin-bottom: 1rem;
@@ -218,6 +218,16 @@
       align-items: end;
       margin-bottom: 0.6rem;
     }
+    .range-generator-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 0.5rem;
+      align-items: end;
+    }
+    .deadline-status {
+      font-weight: 700;
+      margin-left: 0.25rem;
+    }
     .danger-panel {
       border: 1px solid #f4c2c2;
       background: #fff4f4;
@@ -238,6 +248,9 @@
         gap: 0.5rem;
       }
       .participant-controls {
+        grid-template-columns: 1fr;
+      }
+      .range-generator-grid {
         grid-template-columns: 1fr;
       }
       .action-row button {
@@ -270,9 +283,10 @@
       <div style="font-size: 0.95rem;">
         <div>対象：<span id="roundTitleStudent">-</span></div>
         <div>締切：<span id="roundDeadlineStudent">-</span></div>
+        <div class="small-note">締切状況：<span id="roundDeadlineStatusStudent" class="deadline-status">-</span></div>
       </div>
     </div>
-    <label for="studentRoomSelect" style="font-weight: bold;">あなたの部屋番号を選択</label>
+    <label for="studentRoomSelect" style="font-weight: bold;">部屋番号を選択</label>
     <div class="input-row">
       <select id="studentRoomSelect" class="input-inline" style="margin-bottom: 0;"></select>
       <button onclick="goToStep2()" style="white-space: nowrap;">この部屋で進む</button>
@@ -280,12 +294,27 @@
 
     <div id="globalResultsArea" style="display: none; margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
       <h2 style="color: var(--primary);">全体の割当結果</h2>
-      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">結果が確定しました。部屋番号を選んで「次へ」を押すと、あなたの個別の結果と提出内容を確認できます。</p>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">結果が確定しました。部屋番号を選んで「次へ」を押すと、個別の結果と提出内容を確認できます。</p>
       <div class="table-container">
         <table id="globalResultTable">
           <thead><tr><th>候補枠</th><th>担当部屋番号</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+    </div>
+
+    <div style="margin-top: 1rem;">
+      <button class="outline" id="studentHistoryToggleBtn" onclick="toggleStudentHistoryPanel()">過去の回を見る</button>
+      <div id="studentHistoryArea" style="display:none; margin-top:1rem;">
+        <label for="studentHistorySelect">表示する回</label>
+        <select id="studentHistorySelect" onchange="renderStudentHistory()"></select>
+        <p id="studentHistoryEmpty" class="small-note" style="display:none; margin-bottom:0.5rem;">過去の回はありません。</p>
+        <div class="table-container">
+          <table id="studentHistoryTable">
+            <thead><tr><th>候補枠</th><th>担当部屋番号</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -297,6 +326,7 @@
       <div style="font-size: 0.95rem;">
         <div>対象：<span id="roundTitleStudent2">-</span></div>
         <div>締切：<span id="roundDeadlineStudent2">-</span></div>
+        <div class="small-note">締切状況：<span id="roundDeadlineStatusStudent2" class="deadline-status">-</span></div>
       </div>
     </div>
     
@@ -435,6 +465,21 @@
       <h2>部屋番号一覧の編集</h2>
       <textarea id="adminRooms"></textarea>
       <h2>候補日（候補枠）一覧の編集</h2>
+      <div class="status-box" style="margin-bottom: 0.85rem;">
+        <div style="font-weight: bold; margin-bottom: 0.4rem;">期間で候補日を自動作成</div>
+        <div class="range-generator-grid">
+          <div>
+            <label for="slotStartDate">開始日</label>
+            <input type="date" id="slotStartDate" style="margin-bottom:0;">
+          </div>
+          <div>
+            <label for="slotEndDate">終了日</label>
+            <input type="date" id="slotEndDate" style="margin-bottom:0;">
+          </div>
+          <button class="ghost" onclick="generateSlotsByRange()">期間から生成</button>
+        </div>
+        <div class="small-note" style="margin-top: 0.55rem;">平日は1枠、土曜は夜のみ、日曜は朝・昼・夜を自動生成します。</div>
+      </div>
       <textarea id="adminSlots"></textarea>
       <button onclick="saveLists()">一覧を保存する</button>
     </div>
@@ -770,6 +815,73 @@
     return { text: `締切まで約${days}日`, tone: days <= 2 ? "warn" : "good" };
   }
 
+  function toDateInputValue(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function parseDateInputValue(value) {
+    if (!value) return null;
+    const parts = value.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+    const [y, m, d] = parts;
+    return new Date(y, m - 1, d);
+  }
+
+  function parseSlotDate(slotLabel) {
+    const m = slotLabel.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日/);
+    if (!m) return null;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+
+  function getSlotDateRange(slots) {
+    const dates = (slots || [])
+      .map(parseSlotDate)
+      .filter(Boolean)
+      .sort((a, b) => a.getTime() - b.getTime());
+    if (!dates.length) return null;
+    return {
+      start: dates[0],
+      end: dates[dates.length - 1]
+    };
+  }
+
+  function buildSlotsByRange(startDate, endDate) {
+    const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+    const slots = [];
+    const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    while (d <= endDate) {
+      const base = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${weekdays[d.getDay()]})`;
+      if (d.getDay() === 0) {
+        slots.push(`${base}朝`, `${base}昼`, `${base}夜`);
+      } else if (d.getDay() === 6) {
+        slots.push(`${base}夜`);
+      } else {
+        slots.push(base);
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    return slots;
+  }
+
+  window.generateSlotsByRange = function() {
+    const start = parseDateInputValue(document.getElementById('slotStartDate')?.value);
+    const end = parseDateInputValue(document.getElementById('slotEndDate')?.value);
+    if (!start || !end) {
+      alert("開始日と終了日を入力してください。");
+      return;
+    }
+    if (start > end) {
+      alert("開始日は終了日以前を指定してください。");
+      return;
+    }
+    const slots = buildSlotsByRange(start, end);
+    document.getElementById('adminSlots').value = slots.join('\n');
+    alert(`候補日を ${slots.length} 件生成しました。必要なら編集してから保存してください。`);
+  }
+
   window.updateAdminSummary = function() {
     const round = getActiveRound();
     const stats = getRoundStats(round);
@@ -827,6 +939,7 @@
     // 学生画面：今回の対象（回の名前）と締切を表示
     const titleEl = document.getElementById('roundTitleStudent');
     const deadlineEl = document.getElementById('roundDeadlineStudent');
+    const deadlineStatusEl = document.getElementById('roundDeadlineStatusStudent');
     if (titleEl) {
       // 回の名前が空ならアプリのタイトルを表示
       const fallbackTitle = document.title || '寮庶務当 割当';
@@ -849,9 +962,15 @@
       deadlineEl.classList.remove('good', 'warn', 'danger');
       deadlineEl.classList.add(deadlineIndicator.tone);
     }
+    if (deadlineStatusEl) {
+      deadlineStatusEl.textContent = deadlineIndicator.text;
+      deadlineStatusEl.classList.remove('good', 'warn', 'danger');
+      deadlineStatusEl.classList.add(deadlineIndicator.tone);
+    }
     // step2用にも同じ情報を表示
     const titleEl2 = document.getElementById('roundTitleStudent2');
     const deadlineEl2 = document.getElementById('roundDeadlineStudent2');
+    const deadlineStatusEl2 = document.getElementById('roundDeadlineStatusStudent2');
     if (titleEl2) {
       const fallbackTitle = document.title || '寮庶務当 割当';
       titleEl2.textContent = (round.name && round.name.trim()) ? round.name.trim() : fallbackTitle;
@@ -869,6 +988,11 @@
       deadlineEl2.classList.remove('good', 'warn', 'danger');
       deadlineEl2.classList.add(deadlineIndicator.tone);
     }
+    if (deadlineStatusEl2) {
+      deadlineStatusEl2.textContent = deadlineIndicator.text;
+      deadlineStatusEl2.classList.remove('good', 'warn', 'danger');
+      deadlineStatusEl2.classList.add(deadlineIndicator.tone);
+    }
 
     if (window.isResultFinalized()) {
       document.getElementById('globalResultsArea').style.display = 'block';
@@ -881,6 +1005,55 @@
     } else {
       document.getElementById('globalResultsArea').style.display = 'none';
     }
+
+    const historyArea = document.getElementById('studentHistoryArea');
+    if (historyArea && historyArea.style.display === 'block') {
+      window.renderStudentHistory();
+    }
+  }
+
+  window.toggleStudentHistoryPanel = function() {
+    const area = document.getElementById('studentHistoryArea');
+    const btn = document.getElementById('studentHistoryToggleBtn');
+    if (!area || !btn) return;
+
+    const isOpen = area.style.display === 'block';
+    area.style.display = isOpen ? 'none' : 'block';
+    btn.textContent = isOpen ? '過去の回を見る' : '過去の回を閉じる';
+    if (!isOpen) window.renderStudentHistory();
+  }
+
+  window.renderStudentHistory = function() {
+    const select = document.getElementById('studentHistorySelect');
+    const tbody = document.querySelector('#studentHistoryTable tbody');
+    const empty = document.getElementById('studentHistoryEmpty');
+    if (!select || !tbody || !empty) return;
+
+    const historyIds = (db.historyOrder || []).filter(rid => rid && rid !== db.currentRoundId && db.rounds?.[rid]);
+    select.innerHTML = '';
+
+    if (!historyIds.length) {
+      select.style.display = 'none';
+      empty.style.display = 'block';
+      tbody.innerHTML = '';
+      return;
+    }
+
+    select.style.display = 'block';
+    empty.style.display = 'none';
+    historyIds.forEach(rid => {
+      const r = db.rounds[rid];
+      const label = `${r.name || '（無名）'} / ${new Date(r.createdAt || Date.now()).toLocaleString()}`;
+      select.appendChild(new Option(label, rid));
+    });
+
+    if (!historyIds.includes(select.value)) select.value = historyIds[0];
+    const r = db.rounds[select.value];
+    tbody.innerHTML = '';
+    (r?.slots || []).forEach(slot => {
+      const assigned = (r.assignments || {})[slot] || '未定';
+      tbody.innerHTML += `<tr><td>${slot}</td><td><strong>${assigned}</strong></td></tr>`;
+    });
   }
 
   window.goToStep1 = function() {
@@ -916,7 +1089,7 @@
         if ((round.assignments || {})[slot] === room) assignedSlots.push(slot);
       }
       
-      let html = `<h3 style="margin-top:0; color:var(--text);">あなたの割当結果</h3>`;
+      let html = `<h3 style="margin-top:0; color:var(--text);">割当結果</h3>`;
       if (assignedSlots.length > 0) {
         html += `<p style="font-size:1.3rem; font-weight:bold; color:var(--danger); margin-bottom:1rem;">👉 決定枠：<br>${assignedSlots.join('<br>')}</p>`;
         if (assignedSlots.length >= 2) {
@@ -926,7 +1099,7 @@
         html += `<p style="font-size:1.1rem; font-weight:bold; margin-bottom:1rem;">👉 今回の割当はありませんでした（または未定）</p>`;
       }
       
-      html += `<strong>【あなたが提出していた希望】</strong><br>`;
+      html += `<strong>【提出していた希望】</strong><br>`;
       if (currentReqs.length > 0) {
         for(let i=0; i<5; i++) {
           let req = currentReqs[i];
@@ -979,7 +1152,7 @@
 
         if (count >= 2) {
           notice.style.display = 'block';
-          notice.innerHTML = `※今回の枠数と参加人数の都合により、あなたの部屋は <strong>${count}回</strong> 割り当て対象になる可能性があります（ルールに基づく事前表示）。`;
+          notice.innerHTML = `※今回の枠数と参加人数の都合により、この部屋は <strong>${count}回</strong> 割り当て対象になる可能性があります（ルールに基づく事前表示）。`;
         } else {
           notice.style.display = 'none';
           notice.innerHTML = '';
@@ -1233,6 +1406,18 @@
     }
     document.getElementById('adminRooms').value = (round.rooms || []).join('\n');
     document.getElementById('adminSlots').value = (round.slots || []).join('\n');
+    const startInput = document.getElementById('slotStartDate');
+    const endInput = document.getElementById('slotEndDate');
+    if (startInput && endInput) {
+      const range = getSlotDateRange(round.slots || []);
+      if (range) {
+        startInput.value = toDateInputValue(range.start);
+        endInput.value = toDateInputValue(range.end);
+      } else {
+        startInput.value = '';
+        endInput.value = '';
+      }
+    }
 
     const pList = document.getElementById('participantListAdmin');
     pList.innerHTML = '';
