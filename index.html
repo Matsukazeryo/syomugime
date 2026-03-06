@@ -127,48 +127,6 @@
     }
     .muted { color: var(--text-muted); font-size: 0.83rem; }
 
-    .request-health {
-      border: 1px solid #d8e5f8;
-      background: #f8fbff;
-      border-radius: 10px;
-      padding: 0.8rem 0.95rem;
-      margin-bottom: 1rem;
-    }
-    .request-health-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-      gap: 0.55rem;
-      margin-bottom: 0.5rem;
-    }
-    .request-health-item {
-      border: 1px dashed #c8d8ef;
-      border-radius: 8px;
-      background: #fff;
-      padding: 0.45rem 0.6rem;
-    }
-    .request-health-item .label { font-size: 0.75rem; color: var(--text-muted); }
-    .request-health-item .value { font-size: 0.95rem; font-weight: 700; }
-    progress {
-      width: 100%;
-      height: 8px;
-      border: none;
-      border-radius: 999px;
-      background: #dfe7f1;
-      overflow: hidden;
-    }
-    progress::-webkit-progress-bar {
-      background: #dfe7f1;
-      border-radius: 999px;
-    }
-    progress::-webkit-progress-value {
-      background: linear-gradient(90deg, #6aa7ff, #0b6df2);
-      border-radius: 999px;
-    }
-    progress::-moz-progress-bar {
-      background: linear-gradient(90deg, #6aa7ff, #0b6df2);
-      border-radius: 999px;
-    }
-
     .action-row {
       display: flex;
       flex-wrap: wrap;
@@ -333,23 +291,6 @@
     <div id="submissionArea">
       <div id="multiAssignNotice" class="alert" style="display:none; margin-bottom:1rem;"></div>
       <div id="currentStatusArea" class="status-box" style="display: none;"></div>
-      <div class="request-health">
-        <div class="request-health-grid">
-          <div class="request-health-item">
-            <div class="label">入力済み希望数</div>
-            <div class="value" id="selectedPreferenceCount">0 / 5</div>
-          </div>
-          <div class="request-health-item">
-            <div class="label">重複チェック</div>
-            <div class="value" id="duplicateStatus">問題なし</div>
-          </div>
-          <div class="request-health-item">
-            <div class="label">入力の目安</div>
-            <div class="value" id="requestGuideStatus">3件以上が推奨</div>
-          </div>
-        </div>
-        <progress id="preferenceProgress" max="5" value="0"></progress>
-      </div>
       <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
         第1〜第5希望まで選べます（すべて埋めなくても構いません）。<br>
         ※締切前なら何度でも再提出（上書き）可能です。
@@ -596,6 +537,8 @@
   // 互換のため、旧形式（rooms/slots/...直下）も起動時に自動でv2へ移行する
   let db = { adminPassword: "admin", currentRoundId: "", rounds: {}, historyOrder: [] };
   let currentStudentRoom = "";
+  let autoLotteryTimer = null;
+  let autoLotteryInProgress = false;
 
   const makeRoundId = () => `round-${Date.now()}`;
   const nowISO = () => new Date().toISOString();
@@ -718,6 +661,8 @@
           db = snapshot.data();
           // 旧→新の移行と正規化（UI側）
           migrateIfNeeded();
+          scheduleAutoLotteryTimer();
+          void maybeAutoRunLottery("snapshot");
           
           // 開いている画面に合わせてUIを自動更新
           const isAdminMode = document.getElementById('adminToggle').checked;
@@ -738,7 +683,6 @@
             } else if (document.getElementById('step2').classList.contains('active')) {
               renderSlotStatsTable(); // 混み具合をリアルタイム更新
               window.refreshRequestOptionHints();
-              window.updateRequestHealth();
             }
           }
         }
@@ -746,6 +690,8 @@
 
       document.getElementById('loadingOverlay').style.display = 'none';
       renderStudentView();
+      scheduleAutoLotteryTimer();
+      void maybeAutoRunLottery("initial-load");
     } catch (error) {
       alert("データベースの接続に失敗しました。ページをリロードしてください。\n" + error);
     }
@@ -813,6 +759,60 @@
 
     const days = Math.floor(hours / 24);
     return { text: `締切まで約${days}日`, tone: days <= 2 ? "warn" : "good" };
+  }
+
+  function hasAnyAssignment(round) {
+    return Object.values(round.assignments || {}).some(v => !!v);
+  }
+
+  function clearAutoLotteryTimer() {
+    if (autoLotteryTimer) {
+      clearTimeout(autoLotteryTimer);
+      autoLotteryTimer = null;
+    }
+  }
+
+  function scheduleAutoLotteryTimer() {
+    clearAutoLotteryTimer();
+    const round = getActiveRound();
+    if (!round?.deadline || round.autoLotteryExecutedAt) return;
+
+    const deadline = new Date(round.deadline);
+    if (isNaN(deadline.getTime())) return;
+
+    const diff = deadline.getTime() - Date.now();
+    if (diff <= 0) {
+      void maybeAutoRunLottery("deadline-reached");
+      return;
+    }
+
+    const maxDelay = 2147483000;
+    autoLotteryTimer = setTimeout(() => {
+      autoLotteryTimer = null;
+      scheduleAutoLotteryTimer();
+    }, Math.min(diff, maxDelay));
+  }
+
+  async function maybeAutoRunLottery(reason = "") {
+    if (autoLotteryInProgress) return;
+    const round = getActiveRound();
+    if (round.autoLotteryExecutedAt) return;
+    if (!round?.deadline) return;
+
+    const deadline = new Date(round.deadline);
+    if (isNaN(deadline.getTime()) || Date.now() < deadline.getTime()) return;
+    if (hasAnyAssignment(round)) return;
+
+    const activeRooms = (round.rooms || []).filter(r => round.participants?.[r]?.isParticipating);
+    const slots = round.slots || [];
+    if (!activeRooms.length || !slots.length) return;
+
+    autoLotteryInProgress = true;
+    try {
+      await executeLottery(round, { showAlert: false, auto: true, reason });
+    } finally {
+      autoLotteryInProgress = false;
+    }
   }
 
   function toDateInputValue(dateObj) {
@@ -1173,7 +1173,7 @@
       container.innerHTML = '';
       for (let i = 1; i <= 5; i++) {
         const wrap = document.createElement('div');
-        wrap.innerHTML = `<label for="req${i}">第${i}希望</label><select id="req${i}" onchange="updateRequestHealth()"><option value="">-- 希望なし --</option></select>`;
+        wrap.innerHTML = `<label for="req${i}">第${i}希望</label><select id="req${i}"><option value="">-- 希望なし --</option></select>`;
         container.appendChild(wrap);
         const sel = document.getElementById(`req${i}`);
         (round.slots || []).forEach(slot => sel.appendChild(new Option(slot, slot)));
@@ -1182,7 +1182,6 @@
       
       window.renderSlotStatsTable();
       window.refreshRequestOptionHints();
-      window.updateRequestHealth();
     }
 
     document.getElementById('step1').classList.remove('active');
@@ -1222,57 +1221,11 @@
     }
   }
 
-  window.updateRequestHealth = function() {
-    const selectedValues = [];
-    const duplicated = new Set();
-    for (let i = 1; i <= 5; i++) {
-      const select = document.getElementById(`req${i}`);
-      if (!select) continue;
-      const value = select.value;
-      if (!value) continue;
-      if (selectedValues.includes(value)) duplicated.add(value);
-      selectedValues.push(value);
-    }
-
-    const count = selectedValues.length;
-    const progressEl = document.getElementById('preferenceProgress');
-    if (progressEl) progressEl.value = count;
-
-    const countEl = document.getElementById('selectedPreferenceCount');
-    if (countEl) countEl.textContent = `${count} / 5`;
-
-    const duplicateEl = document.getElementById('duplicateStatus');
-    if (duplicateEl) {
-      if (duplicated.size > 0) {
-        duplicateEl.textContent = "重複あり";
-        duplicateEl.style.color = 'var(--danger)';
-      } else {
-        duplicateEl.textContent = "問題なし";
-        duplicateEl.style.color = 'var(--success)';
-      }
-    }
-
-    const guideEl = document.getElementById('requestGuideStatus');
-    if (guideEl) {
-      if (count >= 3) {
-        guideEl.textContent = "入力十分";
-        guideEl.style.color = 'var(--success)';
-      } else if (count === 0) {
-        guideEl.textContent = "未入力";
-        guideEl.style.color = 'var(--warn)';
-      } else {
-        guideEl.textContent = `あと${3 - count}件で推奨`;
-        guideEl.style.color = 'var(--warn)';
-      }
-    }
-  }
-
   window.clearAllRequests = function() {
     for (let i = 1; i <= 5; i++) {
       const select = document.getElementById(`req${i}`);
       if (select) select.value = '';
     }
-    window.updateRequestHealth();
   }
 
   window.submitRequest = async function() {
@@ -1432,6 +1385,7 @@
     window.renderLotteryCancelPanel();
     window.renderAdminRequests();
     window.renderHistoryPanel();
+    scheduleAutoLotteryTimer();
   }
 
   window.renderAdminRequests = function() {
@@ -1463,7 +1417,16 @@
 
   window.saveAdminSettings = function() {
     const round = getActiveRound();
+    const prevDeadline = round.deadline || "";
     round.deadline = document.getElementById('adminDeadline').value;
+
+    if (prevDeadline !== round.deadline) {
+      const newDeadline = round.deadline ? new Date(round.deadline) : null;
+      if (newDeadline && !isNaN(newDeadline.getTime()) && newDeadline.getTime() > Date.now()) {
+        delete round.autoLotteryExecutedAt;
+        delete round.autoLotteryReason;
+      }
+    }
 
     // 開始ポインタは「部屋番号」で保存する（参加フラグのON/OFFに左右されても説明しやすい）
     const sel = document.getElementById('adminPointerRoom');
@@ -1482,6 +1445,8 @@
 
     saveData();
     window.updateAdminSummary();
+    scheduleAutoLotteryTimer();
+    void maybeAutoRunLottery("deadline-updated");
   }
 
   window.saveLists = async function() {
@@ -1700,13 +1665,14 @@ window.setAllParticipants = async function(val) {
     return assignColForRow;
   }
 
-  window.runLottery = async function() {
-    const round = getActiveRound();
-    if (!confirm("抽選を実行しますか？")) return;
-
+  async function executeLottery(round, opts = {}) {
+    const { showAlert = true, auto = false, reason = "" } = opts;
     const activeRooms = (round.rooms || []).filter(r => round.participants?.[r]?.isParticipating);
     const slots = round.slots || [];
-    if (!activeRooms.length || !slots.length) return alert("参加者または候補枠がありません。");
+    if (!activeRooms.length || !slots.length) {
+      if (showAlert) alert("参加者または候補枠がありません。");
+      return false;
+    }
 
     // 公正性：希望の点数（満足度）の合計が最大になる割当を求める。
     // ただし、枠数 > 参加人数 のときは「追加の担当(2回目,3回目...)」が必要。
@@ -1733,15 +1699,7 @@ window.setAllParticipants = async function(val) {
 
     // cost[row(slot)][col(roomCopy)] を作る（最小化）
     // cost = -weight(希望満足度)
-    const cost = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => {
-      // ダミー領域は大きめの費用（ただし完全に禁止はしない）
-      return 0;
-    }));
-
-    // 初期化
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) cost[i][j] = 0;
-    }
+    const cost = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
 
     // 実データ領域
     for (let si = 0; si < n; si++) {
@@ -1760,8 +1718,7 @@ window.setAllParticipants = async function(val) {
         }
 
         const slot = slots[si];
-        const { room, copyIndex } = roomCopies[cj];
-
+        const room = roomCopies[cj].room;
         const w = prefWeightFor(room, slot, round);
 
         // 目的：w（希望満足度）の合計を最大化したい → costでは -w
@@ -1781,14 +1738,15 @@ window.setAllParticipants = async function(val) {
     // slot(row) -> roomCopy(col) を読む
     for (let si = 0; si < slots.length; si++) {
       const cj = assignColForRow[si];
-      if (cj < 0) continue;
-      if (cj >= roomCopies.length) {
-        // ダミーroom（割当なし）
-        continue;
-      }
+      if (cj < 0 || cj >= roomCopies.length) continue;
       const slot = slots[si];
       const room = roomCopies[cj].room;
       round.assignments[slot] = room;
+    }
+
+    if (auto) {
+      round.autoLotteryExecutedAt = nowISO();
+      round.autoLotteryReason = reason || "deadline";
     }
 
     // startPointer は「枠が余ったときに誰が追加で担当するか」を決めるために使う。
@@ -1803,7 +1761,15 @@ window.setAllParticipants = async function(val) {
     window.renderAdminRankTable();
     window.renderLotteryCancelPanel();
     window.updateAdminSummary();
-    alert("抽選完了！（整数計画に近い最適化で割当しました）");
+
+    if (showAlert) alert("抽選完了！（整数計画に近い最適化で割当しました）");
+    return true;
+  }
+
+  window.runLottery = async function() {
+    const round = getActiveRound();
+    if (!confirm("抽選を実行しますか？")) return;
+    await executeLottery(round, { showAlert: true, auto: false });
   }
 
   window.exportCSV = function() {
