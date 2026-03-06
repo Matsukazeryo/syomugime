@@ -1312,7 +1312,7 @@
     const isAdmin = toggleBtn.checked;
     
     if (isAdmin) {
-      const inputPass = prompt("管理者パスワードを入力してください:\n(初期パスワード: admin)");
+      const inputPass = prompt("管理者パスワードを入力してください");
       if (inputPass === db.adminPassword) {
         document.getElementById('studentView').style.display = 'none';
         document.getElementById('adminView').style.display = 'block';
@@ -1613,7 +1613,7 @@ window.setAllParticipants = async function(val) {
     const reqs = (p && Array.isArray(p.requests)) ? p.requests : [];
     if (!reqs.length) return 0;
     const idx = reqs.indexOf(slot);
-    if (idx === -1) return -5; // 希望外は少しマイナス
+    if (idx === -1) return -20; // 希望外は少し強めにマイナス
     // 好みの強さ（必要なら調整OK）
     const weights = [100, 80, 60, 40, 20];
     return weights[idx] ?? 0;
