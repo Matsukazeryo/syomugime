@@ -1030,6 +1030,7 @@
     if (!select || !tbody || !empty) return;
 
     const historyIds = (db.historyOrder || []).filter(rid => rid && rid !== db.currentRoundId && db.rounds?.[rid]);
+    const prevSelectedRid = select.value;
     select.innerHTML = '';
 
     if (!historyIds.length) {
@@ -1047,7 +1048,8 @@
       select.appendChild(new Option(label, rid));
     });
 
-    if (!historyIds.includes(select.value)) select.value = historyIds[0];
+    if (historyIds.includes(prevSelectedRid)) select.value = prevSelectedRid;
+    else select.value = historyIds[0];
     const r = db.rounds[select.value];
     tbody.innerHTML = '';
     (r?.slots || []).forEach(slot => {
