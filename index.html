@@ -6,72 +6,306 @@
   <title>寮庶務当 割当アプリ</title>
   <style>
     :root {
-      --primary: #4dabf7;
-      --primary-hover: #3b8dd9;
-      --bg: #f8f9fa;
+      --primary: #0b6df2;
+      --primary-hover: #0a57bf;
+      --bg: #f2f6fb;
       --card-bg: #ffffff;
-      --text: #343a40;
-      --text-muted: #868e96;
-      --border: #dee2e6;
-      --success: #40c057;
-      --danger: #fa5252;
-      --info: #e7f5ff;
+      --text: #1f2933;
+      --text-muted: #5b6775;
+      --border: #d7dee8;
+      --success: #2f9e44;
+      --danger: #e03131;
+      --warn: #f08c00;
+      --info: #e7f1ff;
+      --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
     }
     
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; background-color: var(--bg); color: var(--text); line-height: 1.6; }
+    body {
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+      background: radial-gradient(circle at top right, #e6f0ff 0%, var(--bg) 45%, #eef3f8 100%);
+      color: var(--text);
+      line-height: 1.6;
+    }
     
-    header { background-color: var(--card-bg); padding: 1rem 2rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-    h1 { font-size: 1.25rem; color: var(--primary); }
-    
-    .container { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-    .card { background: var(--card-bg); padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 1.5rem; }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background-color: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(6px);
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+
+    .header-title-wrap { min-width: 0; }
+    h1 { font-size: 1.25rem; color: var(--primary); margin-bottom: 0.15rem; }
+    .header-subtitle { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .header-controls { display: flex; align-items: center; gap: 0.75rem; }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid #b6d4ff;
+      background: #eff6ff;
+      color: #1d4f91;
+      border-radius: 999px;
+      padding: 0.2rem 0.6rem;
+      font-size: 0.78rem;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    .container { max-width: 980px; margin: 1.5rem auto 2.25rem; padding: 0 1rem; }
+    .card {
+      background: var(--card-bg);
+      padding: 1.5rem;
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      margin-bottom: 1.5rem;
+      border: 1px solid #e9eef5;
+    }
     
     h2 { font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 2px solid var(--border); padding-bottom: 0.5rem; }
     h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: var(--text); }
     
-    button { background-color: var(--primary); color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 1rem; transition: background 0.2s; }
+    button {
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.55rem 1rem;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: background 0.2s, transform 0.15s;
+    }
     button:hover { background-color: var(--primary-hover); }
+    button:active { transform: translateY(1px); }
     button.outline { background-color: transparent; border: 1px solid var(--primary); color: var(--primary); }
     button.outline:hover { background-color: var(--primary); color: white; }
-    button:disabled { background-color: #ccc; cursor: not-allowed; }
+    button.ghost { background-color: #eef4ff; color: #1f4f94; border: 1px solid #cadcfb; }
+    button.ghost:hover { background-color: #daeaff; }
+    button:disabled { background-color: #c6d0dc; cursor: not-allowed; }
     
-    input[type="datetime-local"], select, textarea, input[type="number"], input[type="password"], input[type="text"] { width: 100%; padding: 0.5rem; margin-bottom: 1rem; border: 1px solid var(--border); border-radius: 4px; font-size: 1rem; }
+    input[type="datetime-local"], select, textarea, input[type="number"], input[type="password"], input[type="text"] {
+      width: 100%;
+      padding: 0.55rem 0.65rem;
+      margin-bottom: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      font-size: 0.96rem;
+      background: #fff;
+      color: var(--text);
+    }
+    input:focus, select:focus, textarea:focus, button:focus-visible {
+      outline: 2px solid #bfd7ff;
+      outline-offset: 1px;
+      border-color: #8bb6fb;
+    }
     textarea { resize: vertical; min-height: 100px; }
     
     .toggle-switch { display: flex; align-items: center; cursor: pointer; }
     .toggle-switch input { display: none; }
-    .slider { width: 40px; height: 20px; background-color: #ccc; border-radius: 20px; position: relative; transition: 0.3s; margin-left: 10px; }
-    .slider::before { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background-color: white; top: 2px; left: 2px; transition: 0.3s; }
+    .slider { width: 40px; height: 20px; background-color: #ccd5e2; border-radius: 20px; position: relative; transition: 0.3s; margin-left: 10px; }
+    .slider::before { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background-color: white; top: 2px; left: 2px; transition: 0.3s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
     input:checked + .slider { background-color: var(--primary); }
     input:checked + .slider::before { transform: translateX(20px); }
     
     .participant-row { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
     
     .step-section { display: none; }
-    .step-section.active { display: block; animation: fadeIn 0.3s; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .step-section.active { display: block; animation: fadeIn 0.25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     
+    .step-indicator {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .step-pill {
+      border-radius: 999px;
+      border: 1px solid #d5dce8;
+      background: #f5f7fb;
+      color: #4f5b6b;
+      font-size: 0.82rem;
+      font-weight: 700;
+      padding: 0.22rem 0.75rem;
+    }
+    .step-pill.active {
+      background: #e8f2ff;
+      color: #1a4d91;
+      border-color: #9cc2fa;
+    }
+
+    .quick-guide {
+      border: 1px solid #d8e4f7;
+      background: linear-gradient(135deg, #f6faff 0%, #edf4ff 100%);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      margin-bottom: 1rem;
+    }
+    .quick-guide-title { font-size: 0.9rem; font-weight: 700; margin-bottom: 0.35rem; color: #25508f; }
+    .quick-guide-list { margin: 0; padding-left: 1rem; color: #35506f; font-size: 0.87rem; }
+    .quick-guide-list li { margin-bottom: 0.18rem; }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.55rem;
+      margin-bottom: 1rem;
+    }
+    .metric-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.65rem 0.75rem;
+      background: #fbfdff;
+    }
+    .metric-label { font-size: 0.76rem; color: var(--text-muted); margin-bottom: 0.2rem; }
+    .metric-value { font-size: 1.02rem; font-weight: 800; line-height: 1.2; }
+    .metric-value.good { color: var(--success); }
+    .metric-value.warn { color: var(--warn); }
+    .metric-value.danger { color: var(--danger); }
+    .good { color: var(--success) !important; }
+    .warn { color: var(--warn) !important; }
+    .danger { color: var(--danger) !important; }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.7rem;
+      align-items: end;
+      margin-bottom: 1rem;
+    }
+    .input-row .input-inline {
+      margin-bottom: 0;
+    }
+    .helper-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.45rem;
+    }
+    .muted { color: var(--text-muted); font-size: 0.83rem; }
+
+    .request-health {
+      border: 1px solid #d8e5f8;
+      background: #f8fbff;
+      border-radius: 10px;
+      padding: 0.8rem 0.95rem;
+      margin-bottom: 1rem;
+    }
+    .request-health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 0.55rem;
+      margin-bottom: 0.5rem;
+    }
+    .request-health-item {
+      border: 1px dashed #c8d8ef;
+      border-radius: 8px;
+      background: #fff;
+      padding: 0.45rem 0.6rem;
+    }
+    .request-health-item .label { font-size: 0.75rem; color: var(--text-muted); }
+    .request-health-item .value { font-size: 0.95rem; font-weight: 700; }
+    progress {
+      width: 100%;
+      height: 8px;
+      border: none;
+      border-radius: 999px;
+      background: #dfe7f1;
+      overflow: hidden;
+    }
+    progress::-webkit-progress-bar {
+      background: #dfe7f1;
+      border-radius: 999px;
+    }
+    progress::-webkit-progress-value {
+      background: linear-gradient(90deg, #6aa7ff, #0b6df2);
+      border-radius: 999px;
+    }
+    progress::-moz-progress-bar {
+      background: linear-gradient(90deg, #6aa7ff, #0b6df2);
+      border-radius: 999px;
+    }
+
+    .action-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+      margin-top: 1.2rem;
+    }
+
     table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.9rem; }
-    th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
-    th { background-color: var(--bg); font-weight: bold; white-space: nowrap; }
-    .table-container { overflow-x: auto; margin-bottom: 1rem; }
+    th, td { padding: 0.52rem; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { background-color: #eef3f8; font-weight: 700; white-space: nowrap; color: #334155; }
+    tr:nth-child(even) td { background-color: #fcfdff; }
+    .table-container { overflow-x: auto; margin-bottom: 1rem; border: 1px solid #e4ebf5; border-radius: 10px; }
     
-    .alert { padding: 1rem; background-color: var(--info); color: #1971c2; border-radius: 4px; margin-bottom: 1rem; }
-    .status-box { background-color: #f1f3f5; padding: 1rem; border-radius: 4px; margin-bottom: 1.5rem; border-left: 4px solid var(--primary); }
-    .highlight-result { background-color: #fff3cd; border-left-color: #ffc107; }
+    .alert { padding: 1rem; background-color: var(--info); color: #1766b0; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #cde0f9; }
+    .status-box { background-color: #f5f8fc; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid var(--primary); }
+    .highlight-result { background-color: #fff6db; border-left-color: #f2b900; }
+    .small-note { font-size: 0.82rem; color: var(--text-muted); }
+
+    .admin-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 0.55rem;
+      margin-bottom: 1.2rem;
+    }
+    .admin-summary-card {
+      border: 1px solid #dce7f7;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #f9fbff 0%, #f3f8ff 100%);
+      padding: 0.55rem 0.7rem;
+    }
+    .admin-summary-card .label { font-size: 0.74rem; color: #4d6080; }
+    .admin-summary-card .value { font-size: 1.02rem; font-weight: 800; }
 
     /* 管理者タブ用 */
-    .admin-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }
-    .admin-tab { padding: 0.5rem 1rem; cursor: pointer; background: none; color: var(--text-muted); border: none; border-bottom: 2px solid transparent; border-radius: 0; }
-    .admin-tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: bold; }
+    .admin-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.2rem; }
+    .admin-tab { padding: 0.45rem 0.85rem; cursor: pointer; background: none; color: var(--text-muted); border: 1px solid transparent; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; font-size: 0.9rem; }
+    .admin-tab.active { color: var(--primary); border-color: #c9dcfb; border-bottom-color: var(--primary); background: #f5f9ff; font-weight: 700; }
     .admin-panel { display: none; }
     .admin-panel.active { display: block; }
-    .password-box { background-color: var(--bg); padding: 1rem; border-radius: 4px; border: 1px solid var(--border); margin-bottom: 1.5rem; }
+    .password-box { background-color: #f9fbff; padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.2rem; }
     .password-box input { margin-bottom: 0.5rem; }
-    
+
+    .participant-controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.6rem;
+      align-items: end;
+      margin-bottom: 0.6rem;
+    }
+
     /* ローディング画面 */
-    #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); display: flex; justify-content: center; align-items: center; z-index: 9999; font-size: 1.2rem; font-weight: bold; color: var(--primary); }
+    #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(246,250,255,0.88); display: flex; justify-content: center; align-items: center; z-index: 9999; font-size: 1.15rem; font-weight: bold; color: var(--primary); }
+
+    @media (max-width: 760px) {
+      header { padding: 0.85rem 0.85rem; }
+      .header-subtitle { display: none; }
+      .container { margin-top: 1rem; padding: 0 0.65rem; }
+      .card { padding: 1rem; border-radius: 12px; }
+      .input-row {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+      }
+      .participant-controls {
+        grid-template-columns: 1fr;
+      }
+      .action-row button {
+        width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
@@ -79,17 +313,53 @@
 <div id="loadingOverlay">データベースに接続中...</div>
 
 <header>
-  <h1>寮庶務当 割当</h1>
-  <label class="toggle-switch">
-    <span style="font-size: 0.9rem; font-weight: bold;">管理者モード</span>
-    <input type="checkbox" id="adminToggle" onchange="toggleAdminMode()">
-    <span class="slider"></span>
-  </label>
+  <div class="header-title-wrap">
+    <h1>寮庶務当 割当</h1>
+    <div class="header-subtitle">部屋選択 → 希望提出 → 結果確認 の3ステップ</div>
+  </div>
+  <div class="header-controls">
+    <span id="modeChip" class="status-chip">学生モード</span>
+    <label class="toggle-switch">
+      <span style="font-size: 0.9rem; font-weight: bold;">管理者モード</span>
+      <input type="checkbox" id="adminToggle" onchange="toggleAdminMode()">
+      <span class="slider"></span>
+    </label>
+  </div>
 </header>
 
 <div class="container" id="studentView">
   <div id="step1" class="card step-section active">
-    <h2>部屋番号を選択してください</h2>
+    <div class="step-indicator">
+      <span class="step-pill active">1. 部屋選択</span>
+      <span class="step-pill">2. 希望提出 / 結果確認</span>
+    </div>
+    <h2>1. 部屋番号を選択</h2>
+    <div class="quick-guide">
+      <div class="quick-guide-title">最短で使う流れ</div>
+      <ol class="quick-guide-list">
+        <li>自分の部屋番号を選ぶ</li>
+        <li>第1〜第5希望を選んで提出する</li>
+        <li>締切後に同じ画面から結果を確認する</li>
+      </ol>
+    </div>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">候補枠数</div>
+        <div class="metric-value" id="studentSlotCount">-</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">参加部屋数</div>
+        <div class="metric-value" id="studentParticipantCount">-</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">提出状況</div>
+        <div class="metric-value" id="studentSubmissionCount">-</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">現在ステータス</div>
+        <div class="metric-value" id="studentRoundState">-</div>
+      </div>
+    </div>
     <div id="roundInfoStudent" class="status-box" style="margin-top: 0.75rem;">
       <div style="font-weight: bold; margin-bottom: 0.25rem;">今回の庶務当の情報</div>
       <div style="font-size: 0.95rem;">
@@ -97,9 +367,17 @@
         <div>締切：<span id="roundDeadlineStudent">-</span></div>
       </div>
     </div>
-    <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
-      <select id="studentRoomSelect" style="margin-bottom: 0;"></select>
-      <button onclick="goToStep2()" style="white-space: nowrap;">次へ</button>
+
+    <div class="helper-row">
+      <label for="studentRoomFilter" style="font-weight: bold;">あなたの部屋番号を選択</label>
+      <span id="visibleRoomCount" class="muted">表示: -</span>
+    </div>
+    <div class="input-row">
+      <div>
+        <input type="text" id="studentRoomFilter" class="input-inline" placeholder="部屋番号を絞り込み（例: 4）" oninput="filterRoomOptions()" style="margin-bottom:0.5rem;">
+        <select id="studentRoomSelect" class="input-inline" style="margin-bottom: 0;"></select>
+      </div>
+      <button onclick="goToStep2()" style="white-space: nowrap;">この部屋で進む</button>
     </div>
 
     <div id="globalResultsArea" style="display: none; margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
@@ -115,7 +393,11 @@
   </div>
 
   <div id="step2" class="card step-section">
-    <h2>部屋：<span id="currentRoomDisplay" style="color: var(--primary);"></span></h2>
+    <div class="step-indicator">
+      <span class="step-pill">1. 部屋選択</span>
+      <span class="step-pill active">2. 希望提出 / 結果確認</span>
+    </div>
+    <h2>2. 希望提出 / 結果確認（部屋：<span id="currentRoomDisplay" style="color: var(--primary);"></span>）</h2>
     <div id="roundInfoStudentStep2" class="status-box" style="margin-top: 0.75rem;">
       <div style="font-weight: bold; margin-bottom: 0.25rem;">今回の庶務当の情報</div>
       <div style="font-size: 0.95rem;">
@@ -127,14 +409,33 @@
     <div id="submissionArea">
       <div id="multiAssignNotice" class="alert" style="display:none; margin-bottom:1rem;"></div>
       <div id="currentStatusArea" class="status-box" style="display: none;"></div>
+      <div class="request-health">
+        <div class="request-health-grid">
+          <div class="request-health-item">
+            <div class="label">入力済み希望数</div>
+            <div class="value" id="selectedPreferenceCount">0 / 5</div>
+          </div>
+          <div class="request-health-item">
+            <div class="label">重複チェック</div>
+            <div class="value" id="duplicateStatus">問題なし</div>
+          </div>
+          <div class="request-health-item">
+            <div class="label">入力の目安</div>
+            <div class="value" id="requestGuideStatus">3件以上が推奨</div>
+          </div>
+        </div>
+        <progress id="preferenceProgress" max="5" value="0"></progress>
+      </div>
       <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
         第1〜第5希望まで選べます（すべて埋めなくても構いません）。<br>
         ※締切前なら何度でも再提出（上書き）可能です。
       </p>
       <div id="requestSelectors"></div>
-      <div style="margin-top: 1.5rem;">
+      <div class="action-row">
         <button id="submitBtn" onclick="submitRequest()">提出する</button>
+        <button class="ghost" onclick="clearAllRequests()">選択をクリア</button>
       </div>
+      <p class="small-note" style="margin-top:0.65rem;">候補枠の後ろに表示される人数は、現在の希望人数（全希望の合計）です。</p>
       <h3 style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1rem;">現在の候補枠ごとの希望人数（リアルタイム更新）</h3>
       <div class="table-container">
         <table id="slotStatsTable">
@@ -163,6 +464,32 @@
       <button class="admin-tab" onclick="switchAdminTab('tab-requests')">希望状況</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-lottery')">抽選・結果</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-history')">履歴</button>
+    </div>
+    <div id="adminSummaryGrid" class="admin-summary-grid">
+      <div class="admin-summary-card">
+        <div class="label">編集中の回</div>
+        <div class="value" id="adminSummaryRound">-</div>
+      </div>
+      <div class="admin-summary-card">
+        <div class="label">候補枠数</div>
+        <div class="value" id="adminSummarySlots">-</div>
+      </div>
+      <div class="admin-summary-card">
+        <div class="label">参加部屋数</div>
+        <div class="value" id="adminSummaryParticipants">-</div>
+      </div>
+      <div class="admin-summary-card">
+        <div class="label">提出済み</div>
+        <div class="value" id="adminSummaryRequests">-</div>
+      </div>
+      <div class="admin-summary-card">
+        <div class="label">割当済み枠</div>
+        <div class="value" id="adminSummaryAssignments">-</div>
+      </div>
+      <div class="admin-summary-card">
+        <div class="label">締切状態</div>
+        <div class="value" id="adminSummaryDeadline">-</div>
+      </div>
     </div>
 
     <div id="tab-settings" class="admin-panel active">
@@ -198,6 +525,10 @@
 
     <div id="tab-participants" class="admin-panel">
       <h2>今回参加フラグの設定</h2>
+      <div class="participant-controls">
+        <input type="text" id="adminParticipantFilter" placeholder="部屋番号を絞り込み（例: 3）" oninput="filterParticipantRows()">
+        <div class="small-note">表示中: <span id="adminParticipantVisibleCount">-</span> / <span id="adminParticipantTotalCount">-</span></div>
+      </div>
       <div style="margin-bottom: 1rem;">
         <button class="outline" onclick="setAllParticipants(true)">全てON</button>
         <button class="outline" onclick="setAllParticipants(false)">全てOFF</button>
@@ -434,13 +765,20 @@
           // 開いている画面に合わせてUIを自動更新
           const isAdminMode = document.getElementById('adminToggle').checked;
           if (isAdminMode) {
+            window.updateAdminSummary();
             if (document.getElementById('tab-requests').classList.contains('active')) renderAdminRequests();
             if (document.getElementById('tab-participants').classList.contains('active')) loadAdminData(); // 簡易更新
+            if (document.getElementById('tab-lottery').classList.contains('active')) {
+              renderAdminResultTable();
+              renderAdminRankTable();
+            }
           } else {
             if (document.getElementById('step1').classList.contains('active')) {
               renderStudentView();
             } else if (document.getElementById('step2').classList.contains('active')) {
               renderSlotStatsTable(); // 混み具合をリアルタイム更新
+              window.refreshRequestOptionHints();
+              window.updateRequestHealth();
             }
           }
         }
@@ -448,6 +786,15 @@
 
       document.getElementById('loadingOverlay').style.display = 'none';
       renderStudentView();
+      const roomFilter = document.getElementById('studentRoomFilter');
+      if (roomFilter) {
+        roomFilter.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            window.goToStep2();
+          }
+        });
+      }
     } catch (error) {
       alert("データベースの接続に失敗しました。ページをリロードしてください。\n" + error);
     }
@@ -485,17 +832,139 @@
     return stats;
   }
 
-  window.renderStudentView = function() {
+  function getRoundStats(round) {
+    const rooms = round.rooms || [];
+    const activeRooms = rooms.filter(r => round.participants?.[r]?.isParticipating);
+    const submittedRooms = activeRooms.filter(r => (round.participants?.[r]?.requests || []).length > 0);
+    const assignedCount = Object.values(round.assignments || {}).filter(v => !!v).length;
+    return {
+      totalRooms: rooms.length,
+      activeRooms: activeRooms.length,
+      submittedRooms: submittedRooms.length,
+      slotCount: (round.slots || []).length,
+      assignedCount
+    };
+  }
+
+  function getDeadlineIndicator(deadlineRaw) {
+    if (!deadlineRaw) return { text: "未設定", tone: "warn" };
+    const deadline = new Date(deadlineRaw);
+    if (isNaN(deadline.getTime())) return { text: "未設定", tone: "warn" };
+
+    const diff = deadline.getTime() - Date.now();
+    if (diff <= 0) return { text: "締切済み", tone: "danger" };
+
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 60) return { text: `締切まで約${Math.max(minutes, 1)}分`, tone: "danger" };
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return { text: `締切まで約${hours}時間`, tone: "warn" };
+
+    const days = Math.floor(hours / 24);
+    return { text: `締切まで約${days}日`, tone: days <= 2 ? "warn" : "good" };
+  }
+
+  function setMetricText(elementId, text, tone = "") {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('good', 'warn', 'danger');
+    if (tone) el.classList.add(tone);
+  }
+
+  window.filterRoomOptions = function(preferredValue = null) {
     const round = getActiveRound();
     const select = document.getElementById('studentRoomSelect');
-    // 現在の選択を保持
-    const currentVal = select.value;
+    const filterInput = document.getElementById('studentRoomFilter');
+    if (!select || !filterInput) return;
+
+    const keyword = filterInput.value.trim().toLowerCase();
+    const currentVal = preferredValue !== null ? preferredValue : select.value;
+
     select.innerHTML = '<option value="">-- 選択してください --</option>';
-    (round.rooms || []).forEach(r => {
+    const filteredRooms = (round.rooms || []).filter(r => r.toLowerCase().includes(keyword));
+    filteredRooms.forEach(r => {
       const opt = new Option(r, r);
       if (r === currentVal) opt.selected = true;
       select.appendChild(opt);
     });
+
+    const countEl = document.getElementById('visibleRoomCount');
+    if (countEl) countEl.textContent = `表示: ${filteredRooms.length}件`;
+  }
+
+  window.updateStudentSummary = function() {
+    const round = getActiveRound();
+    const stats = getRoundStats(round);
+    const deadlineIndicator = getDeadlineIndicator(round.deadline);
+    const isFinalized = window.isResultFinalized();
+
+    setMetricText('studentSlotCount', String(stats.slotCount));
+    setMetricText('studentParticipantCount', String(stats.activeRooms));
+    setMetricText('studentSubmissionCount', `${stats.submittedRooms}/${stats.activeRooms || 0}`);
+
+    if (isFinalized) {
+      setMetricText('studentRoundState', '結果確認期間', 'good');
+    } else if (window.isDeadlinePassed()) {
+      setMetricText('studentRoundState', '締切後（抽選待ち）', 'warn');
+    } else {
+      setMetricText('studentRoundState', '希望提出受付中', 'good');
+    }
+
+    const deadlineEl = document.getElementById('roundDeadlineStudent');
+    if (deadlineEl) {
+      deadlineEl.classList.remove('good', 'warn', 'danger');
+      deadlineEl.classList.add(deadlineIndicator.tone);
+    }
+  }
+
+  window.updateAdminSummary = function() {
+    const round = getActiveRound();
+    const stats = getRoundStats(round);
+    const deadlineIndicator = getDeadlineIndicator(round.deadline);
+    const roundName = (round.name && round.name.trim()) ? round.name.trim() : '（無名）';
+
+    const roundEl = document.getElementById('adminSummaryRound');
+    if (roundEl) roundEl.textContent = roundName;
+    const slotsEl = document.getElementById('adminSummarySlots');
+    if (slotsEl) slotsEl.textContent = String(stats.slotCount);
+    const participantsEl = document.getElementById('adminSummaryParticipants');
+    if (participantsEl) participantsEl.textContent = String(stats.activeRooms);
+    const requestEl = document.getElementById('adminSummaryRequests');
+    if (requestEl) requestEl.textContent = `${stats.submittedRooms}/${stats.activeRooms || 0}`;
+    const assignmentEl = document.getElementById('adminSummaryAssignments');
+    if (assignmentEl) assignmentEl.textContent = `${stats.assignedCount}/${stats.slotCount || 0}`;
+    const deadlineEl = document.getElementById('adminSummaryDeadline');
+    if (deadlineEl) {
+      deadlineEl.textContent = deadlineIndicator.text;
+      deadlineEl.classList.remove('good', 'warn', 'danger');
+      deadlineEl.classList.add(deadlineIndicator.tone);
+    }
+  }
+
+  window.filterParticipantRows = function() {
+    const query = (document.getElementById('adminParticipantFilter')?.value || '').trim().toLowerCase();
+    const rows = document.querySelectorAll('#participantListAdmin .participant-row');
+    let visibleCount = 0;
+    rows.forEach(row => {
+      const room = (row.dataset.room || '').toLowerCase();
+      const show = !query || room.includes(query);
+      row.style.display = show ? 'flex' : 'none';
+      if (show) visibleCount++;
+    });
+
+    const visibleEl = document.getElementById('adminParticipantVisibleCount');
+    const totalEl = document.getElementById('adminParticipantTotalCount');
+    if (visibleEl) visibleEl.textContent = String(visibleCount);
+    if (totalEl) totalEl.textContent = String(rows.length);
+  }
+
+  window.renderStudentView = function() {
+    const round = getActiveRound();
+    const select = document.getElementById('studentRoomSelect');
+    const currentVal = select ? select.value : '';
+    window.filterRoomOptions(currentVal);
+    window.updateStudentSummary();
 
     // 学生画面：今回の対象（回の名前）と締切を表示
     const titleEl = document.getElementById('roundTitleStudent');
@@ -517,6 +986,11 @@
         deadlineEl.textContent = '未設定';
       }
     }
+    const deadlineIndicator = getDeadlineIndicator(round.deadline);
+    if (deadlineEl) {
+      deadlineEl.classList.remove('good', 'warn', 'danger');
+      deadlineEl.classList.add(deadlineIndicator.tone);
+    }
     // step2用にも同じ情報を表示
     const titleEl2 = document.getElementById('roundTitleStudent2');
     const deadlineEl2 = document.getElementById('roundDeadlineStudent2');
@@ -532,6 +1006,10 @@
       } else {
         deadlineEl2.textContent = '未設定';
       }
+    }
+    if (deadlineEl2) {
+      deadlineEl2.classList.remove('good', 'warn', 'danger');
+      deadlineEl2.classList.add(deadlineIndicator.tone);
     }
 
     if (window.isResultFinalized()) {
@@ -664,7 +1142,7 @@
       container.innerHTML = '';
       for (let i = 1; i <= 5; i++) {
         const wrap = document.createElement('div');
-        wrap.innerHTML = `<label>第${i}希望</label><select id="req${i}"><option value="">-- 希望なし --</option></select>`;
+        wrap.innerHTML = `<label for="req${i}">第${i}希望</label><select id="req${i}" onchange="updateRequestHealth()"><option value="">-- 希望なし --</option></select>`;
         container.appendChild(wrap);
         const sel = document.getElementById(`req${i}`);
         (round.slots || []).forEach(slot => sel.appendChild(new Option(slot, slot)));
@@ -672,6 +1150,8 @@
       }
       
       window.renderSlotStatsTable();
+      window.refreshRequestOptionHints();
+      window.updateRequestHealth();
     }
 
     document.getElementById('step1').classList.remove('active');
@@ -688,6 +1168,80 @@
       const total = stats.reduce((sum, val) => sum + val, 0);
       tbody.innerHTML += `<tr><td>${slot}</td><td>${stats[0]}</td><td>${stats[1]}</td><td>${stats[2]}</td><td>${stats[3]}</td><td>${stats[4]}</td><td><strong>${total}</strong></td></tr>`;
     });
+  }
+
+  function buildSlotLabel(slot, total) {
+    return `${slot}（希望${total}）`;
+  }
+
+  window.refreshRequestOptionHints = function() {
+    const round = getActiveRound();
+    for (let i = 1; i <= 5; i++) {
+      const select = document.getElementById(`req${i}`);
+      if (!select) continue;
+      const current = select.value;
+      select.innerHTML = '<option value="">-- 希望なし --</option>';
+      (round.slots || []).forEach(slot => {
+        const stats = window.getSlotStats(slot);
+        const total = stats.reduce((sum, val) => sum + val, 0);
+        const option = new Option(buildSlotLabel(slot, total), slot);
+        if (slot === current) option.selected = true;
+        select.appendChild(option);
+      });
+    }
+  }
+
+  window.updateRequestHealth = function() {
+    const selectedValues = [];
+    const duplicated = new Set();
+    for (let i = 1; i <= 5; i++) {
+      const select = document.getElementById(`req${i}`);
+      if (!select) continue;
+      const value = select.value;
+      if (!value) continue;
+      if (selectedValues.includes(value)) duplicated.add(value);
+      selectedValues.push(value);
+    }
+
+    const count = selectedValues.length;
+    const progressEl = document.getElementById('preferenceProgress');
+    if (progressEl) progressEl.value = count;
+
+    const countEl = document.getElementById('selectedPreferenceCount');
+    if (countEl) countEl.textContent = `${count} / 5`;
+
+    const duplicateEl = document.getElementById('duplicateStatus');
+    if (duplicateEl) {
+      if (duplicated.size > 0) {
+        duplicateEl.textContent = "重複あり";
+        duplicateEl.style.color = 'var(--danger)';
+      } else {
+        duplicateEl.textContent = "問題なし";
+        duplicateEl.style.color = 'var(--success)';
+      }
+    }
+
+    const guideEl = document.getElementById('requestGuideStatus');
+    if (guideEl) {
+      if (count >= 3) {
+        guideEl.textContent = "入力十分";
+        guideEl.style.color = 'var(--success)';
+      } else if (count === 0) {
+        guideEl.textContent = "未入力";
+        guideEl.style.color = 'var(--warn)';
+      } else {
+        guideEl.textContent = `あと${3 - count}件で推奨`;
+        guideEl.style.color = 'var(--warn)';
+      }
+    }
+  }
+
+  window.clearAllRequests = function() {
+    for (let i = 1; i <= 5; i++) {
+      const select = document.getElementById(`req${i}`);
+      if (select) select.value = '';
+    }
+    window.updateRequestHealth();
   }
 
   window.submitRequest = async function() {
@@ -725,20 +1279,24 @@
   window.toggleAdminMode = function() {
     const toggleBtn = document.getElementById('adminToggle');
     const isAdmin = toggleBtn.checked;
+    const modeChip = document.getElementById('modeChip');
     
     if (isAdmin) {
       const inputPass = prompt("管理者パスワードを入力してください:\n(初期パスワード: admin)");
       if (inputPass === db.adminPassword) {
         document.getElementById('studentView').style.display = 'none';
         document.getElementById('adminView').style.display = 'block';
+        if (modeChip) modeChip.textContent = '管理者モード';
         window.loadAdminData();
       } else {
         alert("パスワードが違います。");
         toggleBtn.checked = false;
+        if (modeChip) modeChip.textContent = '学生モード';
       }
     } else {
       document.getElementById('studentView').style.display = 'block';
       document.getElementById('adminView').style.display = 'none';
+      if (modeChip) modeChip.textContent = '学生モード';
       window.renderStudentView();
     }
   }
@@ -768,11 +1326,14 @@
     document.querySelector(`button[onclick="switchAdminTab('${tabId}')"]`).classList.add('active');
     document.getElementById(tabId).classList.add('active');
     if (tabId === 'tab-requests') window.renderAdminRequests();
+    if (tabId === 'tab-participants') window.filterParticipantRows();
     if (tabId === 'tab-history') window.renderHistoryPanel();
+    window.updateAdminSummary();
   }
 
   window.loadAdminData = function() {
     const round = getActiveRound();
+    window.updateAdminSummary();
 
     // 回セレクト
     const roundSelect = document.getElementById('roundSelect');
@@ -822,8 +1383,9 @@
     pList.innerHTML = '';
     (round.rooms || []).forEach(r => {
       const isPart = round.participants[r]?.isParticipating ?? true;
-      pList.innerHTML += `<div class="participant-row"><span>部屋 ${r}</span><label class="toggle-switch"><input type="checkbox" onchange="toggleParticipant('${r}', this.checked)" ${isPart ? 'checked' : ''}><span class="slider"></span></label></div>`;
+      pList.innerHTML += `<div class="participant-row" data-room="${r}"><span>部屋 ${r}</span><label class="toggle-switch"><input type="checkbox" onchange="toggleParticipant('${r}', this.checked)" ${isPart ? 'checked' : ''}><span class="slider"></span></label></div>`;
     });
+    window.filterParticipantRows();
 
     window.renderAdminResultTable();
     window.renderAdminRankTable();
@@ -833,6 +1395,7 @@
 
   window.renderAdminRequests = function() {
     const round = getActiveRound();
+    window.updateAdminSummary();
 
     const roomTbody = document.querySelector('#adminRoomRequestsTable tbody');
     roomTbody.innerHTML = '';
@@ -877,6 +1440,7 @@
     if (idxEl) idxEl.textContent = (idxOnActive >= 0) ? String(idxOnActive) : '-';
 
     saveData();
+    window.updateAdminSummary();
   }
 
   window.saveLists = async function() {
@@ -899,6 +1463,8 @@ window.toggleParticipant = async function(room, val) {
   round.participants[room].isParticipating = !!val;
   if (!Array.isArray(round.participants[room].requests)) round.participants[room].requests = [];
   await saveData();
+  window.updateAdminSummary();
+  window.filterParticipantRows();
 }
 
 window.setAllParticipants = async function(val) {
@@ -920,6 +1486,7 @@ window.setAllParticipants = async function(val) {
     round.assignments[slot] = val;
     saveData();
     window.renderAdminRankTable();
+    window.updateAdminSummary();
   }
 
   window.renderAdminResultTable = function() {
@@ -1154,6 +1721,7 @@ window.setAllParticipants = async function(val) {
     await saveData();
     window.renderAdminResultTable();
     window.renderAdminRankTable();
+    window.updateAdminSummary();
     alert("抽選完了！（整数計画に近い最適化で割当しました）");
   }
 
