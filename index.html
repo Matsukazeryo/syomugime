@@ -1571,19 +1571,30 @@ window.setAllParticipants = async function(val) {
     });
   }
 
-  // ---- 整数計画問題(0-1割当)に近い形：目的関数(希望の満足度)最大化 + 制約(各枠は1人、各部屋は上限回数) ----
-  // 実装は「最小費用割当」に落として Hungarian(ハンガリアン) で近似的に解く
+  // ---- 割当ロジック ----
+  // 1. 提出済みの部屋は、まず希望内だけで最適化して割り当てる
+  // 2. どうしても埋まらない場合だけ、提出済みの部屋に希望外を許可する
+  // 3. 未提出の部屋は最適化から外し、残った枠をランダムに割り当てる
+
+  const PREFERENCE_WEIGHTS = [100, 80, 60, 40, 20];
+  const HOPE_OUTSIDE_PENALTY = 10000;
+  const FORBIDDEN_ASSIGNMENT_COST = 1000000;
+
+  function getSubmittedRequestsFor(room, round) {
+    const p = round.participants?.[room];
+    if (!p || !Array.isArray(p.requests)) return [];
+    return p.requests.filter(Boolean);
+  }
+
+  function hasSubmittedRequests(room, round) {
+    return getSubmittedRequestsFor(room, round).length > 0;
+  }
 
   function prefWeightFor(room, slot, round) {
-    // 第1〜第5希望に大きい重み、それ以外は小さめ(希望外) / 未提出は0
-    const p = round.participants?.[room];
-    const reqs = (p && Array.isArray(p.requests)) ? p.requests : [];
-    if (!reqs.length) return 0;
+    const reqs = getSubmittedRequestsFor(room, round);
     const idx = reqs.indexOf(slot);
-    if (idx === -1) return -20; // 希望外は少し強めにマイナス
-    // 好みの強さ（必要なら調整OK）
-    const weights = [100, 80, 60, 40, 20];
-    return weights[idx] ?? 0;
+    if (idx === -1) return null;
+    return PREFERENCE_WEIGHTS[idx] ?? 0;
   }
 
   function buildRoomCopies(activeRooms, slotsLen, startPointer) {
@@ -1608,6 +1619,119 @@ window.setAllParticipants = async function(val) {
     }
 
     return copies;
+  }
+
+  function shuffleArray(arr) {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }
+
+  function canAssignSubmittedOnlyToRequestedSlots(slots, roomCopies, round) {
+    if (!roomCopies.length) return true;
+
+    const slotIndexByName = new Map(slots.map((slot, idx) => [slot, idx]));
+    const edges = roomCopies.map(copy => (
+      getSubmittedRequestsFor(copy.room, round)
+        .map(slot => slotIndexByName.get(slot))
+        .filter(idx => idx !== undefined)
+    ));
+
+    if (edges.some(list => list.length === 0)) return false;
+
+    const slotToCopy = new Array(slots.length).fill(-1);
+    const copyOrder = roomCopies
+      .map((copy, idx) => ({ idx, degree: edges[idx].length }))
+      .sort((a, b) => a.degree - b.degree)
+      .map(item => item.idx);
+
+    function dfs(copyIdx, seen) {
+      for (const slotIdx of edges[copyIdx]) {
+        if (seen[slotIdx]) continue;
+        seen[slotIdx] = true;
+        if (slotToCopy[slotIdx] === -1 || dfs(slotToCopy[slotIdx], seen)) {
+          slotToCopy[slotIdx] = copyIdx;
+          return true;
+        }
+      }
+      return false;
+    }
+
+    let matched = 0;
+    for (const copyIdx of copyOrder) {
+      const seen = new Array(slots.length).fill(false);
+      if (dfs(copyIdx, seen)) matched += 1;
+    }
+    return matched === roomCopies.length;
+  }
+
+  function buildSubmittedCostMatrix(slots, roomCopies, round, allowOutside) {
+    const n = slots.length;
+    const cost = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
+
+    for (let si = 0; si < n; si++) {
+      for (let cj = 0; cj < n; cj++) {
+        if (cj >= roomCopies.length) {
+          cost[si][cj] = 0;
+          continue;
+        }
+
+        const slot = slots[si];
+        const room = roomCopies[cj].room;
+        const weight = prefWeightFor(room, slot, round);
+
+        if (weight !== null) {
+          cost[si][cj] = -weight;
+          continue;
+        }
+
+        cost[si][cj] = allowOutside ? HOPE_OUTSIDE_PENALTY : FORBIDDEN_ASSIGNMENT_COST;
+      }
+    }
+
+    return cost;
+  }
+
+  function assignSubmittedCopies(slots, roomCopies, round, allowOutside) {
+    if (!roomCopies.length) {
+      return { assignments: [], usedSlotIndexes: new Set(), outsideCount: 0 };
+    }
+
+    const cost = buildSubmittedCostMatrix(slots, roomCopies, round, allowOutside);
+    const assignColForRow = hungarian(cost);
+    const assignments = [];
+    const usedSlotIndexes = new Set();
+    let outsideCount = 0;
+
+    for (let si = 0; si < slots.length; si++) {
+      const cj = assignColForRow[si];
+      if (cj < 0 || cj >= roomCopies.length) continue;
+
+      const slot = slots[si];
+      const room = roomCopies[cj].room;
+      if (prefWeightFor(room, slot, round) === null) outsideCount += 1;
+
+      assignments.push({ slot, room, slotIndex: si });
+      usedSlotIndexes.add(si);
+    }
+
+    return { assignments, usedSlotIndexes, outsideCount };
+  }
+
+  function assignRandomSlotsToUnsubmitted(remainingSlots, roomCopies) {
+    const shuffledSlots = shuffleArray(remainingSlots);
+    const shuffledCopies = shuffleArray(roomCopies);
+    const count = Math.min(shuffledSlots.length, shuffledCopies.length);
+    const assignments = [];
+
+    for (let i = 0; i < count; i++) {
+      assignments.push({ slot: shuffledSlots[i], room: shuffledCopies[i].room });
+    }
+
+    return assignments;
   }
 
   // Hungarian Algorithm (min-cost assignment) for a square matrix
@@ -1676,12 +1800,9 @@ window.setAllParticipants = async function(val) {
       return false;
     }
 
-    // 公正性：希望の点数（満足度）の合計が最大になる割当を求める。
-    // ただし、枠数 > 参加人数 のときは「追加の担当(2回目,3回目...)」が必要。
+    // 枠数 > 参加人数 のときは「追加の担当(2回目,3回目...)」が必要。
     // その追加分は startPointer から順に担当させる（循環）ことで、
     // “誰が複数回になるか”をルールで明確化して説明可能にする。
-
-    // 容量制約(同一部屋の複数割当)を部屋コピーで表現
     const P = activeRooms.length;
 
     // startPointerRoom（部屋番号指定）があればそれを優先し、現在の参加者リスト上の位置に変換
@@ -1695,56 +1816,29 @@ window.setAllParticipants = async function(val) {
     }
 
     const roomCopies = buildRoomCopies(activeRooms, slots.length, ptr);
-
-    // 正方行列にするため、必要ならダミー行/列を追加
-    const n = Math.max(slots.length, roomCopies.length);
-
-    // cost[row(slot)][col(roomCopy)] を作る（最小化）
-    // cost = -weight(希望満足度)
-    const cost = Array.from({ length: n }, () => Array.from({ length: n }, () => 0));
-
-    // 実データ領域
-    for (let si = 0; si < n; si++) {
-      for (let cj = 0; cj < n; cj++) {
-        // slot row
-        if (si >= slots.length) {
-          // ダミーslot：何に割り当ててもOK(費用0)
-          cost[si][cj] = 0;
-          continue;
-        }
-        // roomCopy col
-        if (cj >= roomCopies.length) {
-          // ダミーroom：枠が余るのを許す（費用は少し大きめ）
-          cost[si][cj] = 200;
-          continue;
-        }
-
-        const slot = slots[si];
-        const room = roomCopies[cj].room;
-        const w = prefWeightFor(room, slot, round);
-
-        // 目的：w（希望満足度）の合計を最大化したい → costでは -w
-        // 追加の担当(2回目以降)を誰が持つかは「roomCopies の作り方」で既に決まっている
-        cost[si][cj] = -w;
-      }
-    }
-
-    // Hungarian で最小費用割当
-    const assignColForRow = hungarian(cost);
+    const submittedCopies = roomCopies.filter(copy => hasSubmittedRequests(copy.room, round));
+    const unsubmittedCopies = roomCopies.filter(copy => !hasSubmittedRequests(copy.room, round));
+    const canKeepSubmittedWithinRequests = canAssignSubmittedOnlyToRequestedSlots(slots, submittedCopies, round);
+    const submittedResult = assignSubmittedCopies(
+      slots,
+      submittedCopies,
+      round,
+      !canKeepSubmittedWithinRequests
+    );
+    const remainingSlots = slots.filter((slot, idx) => !submittedResult.usedSlotIndexes.has(idx));
+    const randomAssignments = assignRandomSlotsToUnsubmitted(remainingSlots, unsubmittedCopies);
 
     // 結果を round.assignments に反映
     round.assignments = {};
-    // まず未定で初期化
     slots.forEach(s => { round.assignments[s] = ""; });
 
-    // slot(row) -> roomCopy(col) を読む
-    for (let si = 0; si < slots.length; si++) {
-      const cj = assignColForRow[si];
-      if (cj < 0 || cj >= roomCopies.length) continue;
-      const slot = slots[si];
-      const room = roomCopies[cj].room;
+    submittedResult.assignments.forEach(({ slot, room }) => {
       round.assignments[slot] = room;
-    }
+    });
+
+    randomAssignments.forEach(({ slot, room }) => {
+      round.assignments[slot] = room;
+    });
 
     if (auto) {
       round.autoLotteryExecutedAt = nowISO();
@@ -1764,7 +1858,16 @@ window.setAllParticipants = async function(val) {
     window.renderLotteryCancelPanel();
     window.updateAdminSummary();
 
-    if (showAlert) alert("抽選完了！（整数計画に近い最適化で割当しました）");
+    if (showAlert) {
+      const messages = ["抽選完了！"];
+      if (unsubmittedCopies.length > 0) {
+        messages.push(`未提出 ${unsubmittedCopies.length} 件分は、残りの候補枠からランダムに割り当てました。`);
+      }
+      if (submittedResult.outsideCount > 0) {
+        messages.push(`希望内だけでは埋まらなかったため、${submittedResult.outsideCount} 件は希望外を許可しました。`);
+      }
+      alert(messages.join("\n"));
+    }
     return true;
   }
 
