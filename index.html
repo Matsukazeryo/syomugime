@@ -144,6 +144,45 @@
     .status-box { background-color: #f5f8fc; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid var(--primary); }
     .highlight-result { background-color: #fff6db; border-left-color: #f2b900; }
     .small-note { font-size: 0.82rem; color: var(--text-muted); }
+    .student-round-info {
+      background: linear-gradient(180deg, #f9fbff 0%, #f3f8ff 100%);
+      border: 1px solid #d7e5fb;
+      border-left: none;
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+      margin-bottom: 1.1rem;
+    }
+    .student-round-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+      margin-bottom: 0.7rem;
+    }
+    .student-round-meta-label {
+      font-size: 0.78rem;
+      color: #5c6c82;
+      margin-bottom: 0.2rem;
+    }
+    .student-round-meta-value {
+      font-size: 0.96rem;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+    .student-deadline-emphasis {
+      font-size: 1.3rem;
+      font-weight: 900;
+      letter-spacing: 0.01em;
+      line-height: 1.3;
+    }
+    .student-next-btn {
+      min-width: 168px;
+      min-height: 54px;
+      padding: 0.9rem 1.4rem;
+      border-radius: 10px;
+      font-size: 1.05rem;
+      font-weight: 800;
+      white-space: nowrap;
+      box-shadow: 0 8px 18px rgba(11, 109, 242, 0.18);
+    }
 
     .admin-summary-grid {
       display: grid;
@@ -214,6 +253,16 @@
       .action-row button {
         width: 100%;
       }
+      .student-round-meta {
+        grid-template-columns: 1fr;
+        gap: 0.55rem;
+      }
+      .student-deadline-emphasis {
+        font-size: 1.15rem;
+      }
+      .student-next-btn {
+        width: 100%;
+      }
     }
   </style>
 </head>
@@ -234,20 +283,26 @@
 </header>
 
 <div class="container" id="studentView">
-  <div id="step1" class="card step-section active">
-    <h2>1. 部屋番号を選択</h2>
-    <div id="roundInfoStudent" class="status-box" style="margin-top: 0.75rem;">
-      <div style="font-weight: bold; margin-bottom: 0.25rem;">今回の庶務当の情報</div>
-      <div style="font-size: 0.95rem;">
-        <div>対象：<span id="roundTitleStudent">-</span></div>
-        <div>締切：<span id="roundDeadlineStudent">-</span></div>
-        <div class="small-note">締切状況：<span id="roundDeadlineStatusStudent" class="deadline-status">-</span></div>
+  <div id="roundInfoStudent" class="status-box student-round-info">
+    <div class="student-round-meta">
+      <div>
+        <div class="student-round-meta-label">対象</div>
+        <div id="roundTitleStudent" class="student-round-meta-value">-</div>
+      </div>
+      <div>
+        <div class="student-round-meta-label">締切</div>
+        <div id="roundDeadlineStudent" class="student-round-meta-value">-</div>
       </div>
     </div>
+    <div id="roundDeadlineStatusStudent" class="student-deadline-emphasis deadline-status">-</div>
+  </div>
+
+  <div id="step1" class="card step-section active">
+    <h2>1. 部屋番号を選択</h2>
     <label for="studentRoomSelect" style="font-weight: bold;">部屋番号を選択</label>
     <div class="input-row">
       <select id="studentRoomSelect" class="input-inline" style="margin-bottom: 0;"></select>
-      <button onclick="goToStep2()" style="white-space: nowrap;">この部屋で進む</button>
+      <button class="student-next-btn" onclick="goToStep2()">次へ</button>
     </div>
 
     <div id="globalResultsArea" style="display: none; margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
@@ -279,15 +334,6 @@
 
   <div id="step2" class="card step-section">
     <h2>2. 希望提出 / 結果確認（部屋：<span id="currentRoomDisplay" style="color: var(--primary);"></span>）</h2>
-    <div id="roundInfoStudentStep2" class="status-box" style="margin-top: 0.75rem;">
-      <div style="font-weight: bold; margin-bottom: 0.25rem;">今回の庶務当の情報</div>
-      <div style="font-size: 0.95rem;">
-        <div>対象：<span id="roundTitleStudent2">-</span></div>
-        <div>締切：<span id="roundDeadlineStudent2">-</span></div>
-        <div class="small-note">締切状況：<span id="roundDeadlineStatusStudent2" class="deadline-status">-</span></div>
-      </div>
-    </div>
-    
     <div id="submissionArea">
       <div id="multiAssignNotice" class="alert" style="display:none; margin-bottom:1rem;"></div>
       <div id="currentStatusArea" class="status-box" style="display: none;"></div>
@@ -752,13 +798,13 @@
     if (diff <= 0) return { text: "締切済み", tone: "danger" };
 
     const minutes = Math.floor(diff / 60000);
-    if (minutes < 60) return { text: `締切まで約${Math.max(minutes, 1)}分`, tone: "danger" };
+    if (minutes < 60) return { text: `締切まであと約${Math.max(minutes, 1)}分`, tone: "danger" };
 
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return { text: `締切まで約${hours}時間`, tone: "warn" };
+    if (hours < 24) return { text: `締切まであと約${hours}時間`, tone: "warn" };
 
     const days = Math.floor(hours / 24);
-    return { text: `締切まで約${days}日`, tone: days <= 2 ? "warn" : "good" };
+    return { text: `締切まであと約${days}日`, tone: days <= 2 ? "warn" : "good" };
   }
 
   function hasAnyAssignment(round) {
@@ -941,7 +987,6 @@
     const deadlineEl = document.getElementById('roundDeadlineStudent');
     const deadlineStatusEl = document.getElementById('roundDeadlineStatusStudent');
     if (titleEl) {
-      // 回の名前が空ならアプリのタイトルを表示
       const fallbackTitle = document.title || '寮庶務当 割当';
       titleEl.textContent = (round.name && round.name.trim()) ? round.name.trim() : fallbackTitle;
     }
@@ -960,38 +1005,11 @@
     const deadlineIndicator = getDeadlineIndicator(round.deadline);
     if (deadlineEl) {
       deadlineEl.classList.remove('good', 'warn', 'danger');
-      deadlineEl.classList.add(deadlineIndicator.tone);
     }
     if (deadlineStatusEl) {
       deadlineStatusEl.textContent = deadlineIndicator.text;
       deadlineStatusEl.classList.remove('good', 'warn', 'danger');
       deadlineStatusEl.classList.add(deadlineIndicator.tone);
-    }
-    // step2用にも同じ情報を表示
-    const titleEl2 = document.getElementById('roundTitleStudent2');
-    const deadlineEl2 = document.getElementById('roundDeadlineStudent2');
-    const deadlineStatusEl2 = document.getElementById('roundDeadlineStatusStudent2');
-    if (titleEl2) {
-      const fallbackTitle = document.title || '寮庶務当 割当';
-      titleEl2.textContent = (round.name && round.name.trim()) ? round.name.trim() : fallbackTitle;
-    }
-    if (deadlineEl2) {
-      if (round.deadline) {
-        const d = new Date(round.deadline);
-        if (isNaN(d.getTime())) deadlineEl2.textContent = round.deadline;
-        else deadlineEl2.textContent = d.toLocaleString('ja-JP');
-      } else {
-        deadlineEl2.textContent = '未設定';
-      }
-    }
-    if (deadlineEl2) {
-      deadlineEl2.classList.remove('good', 'warn', 'danger');
-      deadlineEl2.classList.add(deadlineIndicator.tone);
-    }
-    if (deadlineStatusEl2) {
-      deadlineStatusEl2.textContent = deadlineIndicator.text;
-      deadlineStatusEl2.classList.remove('good', 'warn', 'danger');
-      deadlineStatusEl2.classList.add(deadlineIndicator.tone);
     }
 
     if (window.isResultFinalized()) {
