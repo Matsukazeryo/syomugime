@@ -491,8 +491,15 @@
 
     <div id="tab-lottery" class="admin-panel">
       <h2>抽選の実行</h2>
-      <button onclick="runLottery()" style="margin-bottom: 1.5rem;">抽選を実行する</button>
-      <h2>割当結果・手動修正</h2>
+      <div class="action-row" style="margin-top: 0; margin-bottom: 1rem;">
+        <button onclick="runLottery()">抽選を実行する</button>
+        <button class="ghost" onclick="publishResultsToStudents()">学生に反映する</button>
+      </div>
+      <div class="status-box" style="margin-bottom: 1rem;">
+        <div id="publishStatusText" style="font-weight: 800; margin-bottom: 0.3rem;">学生への反映状況: -</div>
+        <div id="publishStatusNote" class="small-note">抽選結果は、反映するまで学生には表示されません。</div>
+      </div>
+      <h2>割当結果・手動修正（管理者確認用）</h2>
       <div class="table-container" style="margin-bottom: 1rem;">
         <table id="resultTableAdmin">
           <thead><tr><th>候補枠</th><th>担当部屋番号 (手動修正)</th></tr></thead>
@@ -518,7 +525,7 @@
       <h2>抽選取り消し</h2>
       <div class="danger-panel">
         <p style="font-size: 0.9rem; margin-bottom: 0.6rem;">
-          現在の割当結果を取り消すと、すべての候補枠の担当が未定に戻ります。希望提出データは消えません。
+          管理者確認用の割当結果を取り消すと、すべての候補枠の担当が未定に戻ります。学生に反映済みの結果は、この操作だけでは変わりません。
         </p>
         <div class="small-note" id="cancelLotterySummary">現在の割当: -</div>
       </div>
@@ -588,6 +595,38 @@
 
   const makeRoundId = () => `round-${Date.now()}`;
   const nowISO = () => new Date().toISOString();
+  const countAssignedEntries = (assignments) => Object.values(assignments || {}).filter(v => !!v).length;
+
+  function cloneAssignmentsForSlots(round, assignments) {
+    const copy = {};
+    (round.slots || []).forEach(slot => {
+      copy[slot] = assignments?.[slot] || "";
+    });
+    return copy;
+  }
+
+  function getPublishedAssignments(round) {
+    if (!round.assignments) round.assignments = {};
+    return round.assignments;
+  }
+
+  function getDraftAssignments(round) {
+    if (!round.draftAssignments) {
+      round.draftAssignments = cloneAssignmentsForSlots(round, round.assignments || {});
+    }
+    return round.draftAssignments;
+  }
+
+  function hasPublishedResults(round) {
+    return countAssignedEntries(getPublishedAssignments(round)) > 0;
+  }
+
+  function haveDraftChanges(round) {
+    const slots = round.slots || [];
+    const draft = getDraftAssignments(round);
+    const published = getPublishedAssignments(round);
+    return slots.some(slot => (draft[slot] || "") !== (published[slot] || ""));
+  }
 
   function getActiveRound() {
     if (!db.currentRoundId || !db.rounds?.[db.currentRoundId]) {
@@ -603,7 +642,8 @@
         participants: {},
         deadline: "",
         startPointer: 0,
-        assignments: {}
+        assignments: {},
+        draftAssignments: {}
       };
       if (!db.historyOrder) db.historyOrder = [];
       if (!db.historyOrder.includes(rid)) db.historyOrder.unshift(rid);
@@ -618,6 +658,13 @@
       if (typeof round.participants[r].isParticipating !== 'boolean') round.participants[r].isParticipating = true;
       if (!Array.isArray(round.participants[r].requests)) round.participants[r].requests = [];
     });
+    if (!round.assignments || typeof round.assignments !== 'object') round.assignments = {};
+    round.assignments = cloneAssignmentsForSlots(round, round.assignments);
+    if (!round.draftAssignments || typeof round.draftAssignments !== 'object') {
+      round.draftAssignments = cloneAssignmentsForSlots(round, round.assignments);
+    } else {
+      round.draftAssignments = cloneAssignmentsForSlots(round, round.draftAssignments);
+    }
   }
 
   function migrateIfNeeded() {
@@ -633,7 +680,8 @@
         participants: db.participants || {},
         deadline: db.deadline || "",
         startPointer: typeof db.startPointer === 'number' ? db.startPointer : 0,
-        assignments: db.assignments || {}
+        assignments: db.assignments || {},
+        draftAssignments: db.assignments || {}
       };
       normalizeParticipants(round);
       const adminPassword = db.adminPassword || "admin";
@@ -661,7 +709,8 @@
         participants: {},
         deadline: "",
         startPointer: 0,
-        assignments: {}
+        assignments: {},
+        draftAssignments: {}
       };
       db.historyOrder.unshift(rid);
     }
@@ -688,7 +737,8 @@
           participants: {},
           deadline: "",
           startPointer: 0,
-          assignments: {}
+          assignments: {},
+          draftAssignments: {}
         };
         round.rooms.forEach(r => round.participants[r] = { isParticipating: true, requests: [] });
 
@@ -719,6 +769,7 @@
             if (document.getElementById('tab-lottery').classList.contains('active')) {
               renderAdminResultTable();
               renderAdminRankTable();
+              renderPublishStatus();
             }
             if (document.getElementById('tab-cancel-lottery').classList.contains('active')) {
               renderLotteryCancelPanel();
@@ -727,8 +778,12 @@
             if (document.getElementById('step1').classList.contains('active')) {
               renderStudentView();
             } else if (document.getElementById('step2').classList.contains('active')) {
-              renderSlotStatsTable(); // 混み具合をリアルタイム更新
-              window.refreshRequestOptionHints();
+              if (window.isDeadlinePassed() || window.isResultFinalized()) {
+                window.goToStep2();
+              } else {
+                renderSlotStatsTable(); // 混み具合をリアルタイム更新
+                window.refreshRequestOptionHints();
+              }
             }
           }
         }
@@ -760,7 +815,7 @@
   }
   window.isResultFinalized = function() {
     const round = getActiveRound();
-    return window.isDeadlinePassed() || Object.keys(round.assignments || {}).length > 0;
+    return hasPublishedResults(round);
   }
 
   window.getSlotStats = function(slotName) {
@@ -779,7 +834,7 @@
     const rooms = round.rooms || [];
     const activeRooms = rooms.filter(r => round.participants?.[r]?.isParticipating);
     const submittedRooms = activeRooms.filter(r => (round.participants?.[r]?.requests || []).length > 0);
-    const assignedCount = Object.values(round.assignments || {}).filter(v => !!v).length;
+    const assignedCount = countAssignedEntries(getDraftAssignments(round));
     return {
       totalRooms: rooms.length,
       activeRooms: activeRooms.length,
@@ -808,7 +863,7 @@
   }
 
   function hasAnyAssignment(round) {
-    return Object.values(round.assignments || {}).some(v => !!v);
+    return countAssignedEntries(getDraftAssignments(round)) > 0;
   }
 
   function clearAutoLotteryTimer() {
@@ -952,6 +1007,38 @@
     }
   }
 
+  window.renderPublishStatus = function() {
+    const round = getActiveRound();
+    const statusEl = document.getElementById('publishStatusText');
+    const noteEl = document.getElementById('publishStatusNote');
+    if (!statusEl || !noteEl) return;
+
+    const draftCount = countAssignedEntries(getDraftAssignments(round));
+    const publishedCount = countAssignedEntries(getPublishedAssignments(round));
+
+    if (draftCount === 0 && publishedCount === 0) {
+      statusEl.textContent = "学生への反映状況: 管理者確認用の結果はまだありません";
+      noteEl.textContent = "抽選を実行すると、まずは管理者だけが確認できる結果が作成されます。";
+      return;
+    }
+
+    if (publishedCount === 0 && draftCount > 0) {
+      statusEl.textContent = "学生への反映状況: まだ反映していません";
+      noteEl.textContent = `管理者確認用の結果 ${draftCount} 件があります。内容を確認してから「学生に反映する」を押してください。`;
+      return;
+    }
+
+    if (haveDraftChanges(round)) {
+      statusEl.textContent = "学生への反映状況: 未反映の変更があります";
+      noteEl.textContent = `学生表示中 ${publishedCount} 件 / 管理者確認用 ${draftCount} 件です。更新するにはもう一度「学生に反映する」を押してください。`;
+      return;
+    }
+
+    const publishedAtText = round.publishedAt ? new Date(round.publishedAt).toLocaleString('ja-JP') : "反映済み";
+    statusEl.textContent = "学生への反映状況: 反映済み";
+    noteEl.textContent = `${publishedAtText} に現在の結果を学生へ反映しました。`;
+  }
+
   window.filterParticipantRows = function() {
     const query = (document.getElementById('adminParticipantFilter')?.value || '').trim().toLowerCase();
     const rows = document.querySelectorAll('#participantListAdmin .participant-row');
@@ -1015,9 +1102,10 @@
     if (window.isResultFinalized()) {
       document.getElementById('globalResultsArea').style.display = 'block';
       const tbody = document.querySelector('#globalResultTable tbody');
+      const publishedAssignments = getPublishedAssignments(round);
       tbody.innerHTML = '';
       (round.slots || []).forEach(slot => {
-        const assigned = (round.assignments || {})[slot] || '未定';
+        const assigned = publishedAssignments[slot] || '未定';
         tbody.innerHTML += `<tr><td>${slot}</td><td><strong>${assigned}</strong></td></tr>`;
       });
     } else {
@@ -1105,8 +1193,9 @@
       if (notice) { notice.style.display = 'none'; notice.innerHTML = ''; }
 
       let assignedSlots = [];
-      for (let slot in (round.assignments || {})) {
-        if ((round.assignments || {})[slot] === room) assignedSlots.push(slot);
+      const publishedAssignments = getPublishedAssignments(round);
+      for (let slot in publishedAssignments) {
+        if (publishedAssignments[slot] === room) assignedSlots.push(slot);
       }
       
       let html = `<h3 style="margin-top:0; color:var(--text);">割当結果</h3>`;
@@ -1125,6 +1214,25 @@
           let req = currentReqs[i];
           let matchText = (req && assignedSlots.includes(req)) ? ' <span style="color:var(--danger); font-weight:bold;">(決定！)</span>' : '';
           html += `第${i+1}希望: ${req || 'なし'}${matchText}<br>`;
+        }
+      } else {
+        html += `希望の提出はありませんでした。<br>`;
+      }
+      document.getElementById('personalResultBox').innerHTML = html;
+
+    } else if (window.isDeadlinePassed()) {
+      document.getElementById('submissionArea').style.display = 'none';
+      document.getElementById('personalResultArea').style.display = 'block';
+
+      const notice = document.getElementById('multiAssignNotice');
+      if (notice) { notice.style.display = 'none'; notice.innerHTML = ''; }
+
+      let html = `<h3 style="margin-top:0; color:var(--text);">結果は確認中です</h3>`;
+      html += `<p style="font-size:1rem; font-weight:bold; margin-bottom:1rem;">管理者が抽選結果を確認しています。反映されるまでしばらくお待ちください。</p>`;
+      html += `<strong>【提出していた希望】</strong><br>`;
+      if (currentReqs.length > 0) {
+        for (let i = 0; i < 5; i++) {
+          html += `第${i + 1}希望: ${currentReqs[i] || 'なし'}<br>`;
         }
       } else {
         html += `希望の提出はありませんでした。<br>`;
@@ -1250,6 +1358,10 @@
 
   window.submitRequest = async function() {
     const round = getActiveRound();
+    if (window.isDeadlinePassed() || window.isResultFinalized()) {
+      alert("締切後または結果反映後は希望を提出できません。");
+      return;
+    }
     if (!(round.participants[currentStudentRoom]?.isParticipating ?? true)) {
       alert("参加フラグがOFFのため、希望を提出できません。");
       return;
@@ -1329,6 +1441,7 @@
     if (tabId === 'tab-participants') window.filterParticipantRows();
     if (tabId === 'tab-cancel-lottery') window.renderLotteryCancelPanel();
     if (tabId === 'tab-history') window.renderHistoryPanel();
+    if (tabId === 'tab-lottery') window.renderPublishStatus();
     window.updateAdminSummary();
   }
 
@@ -1403,6 +1516,7 @@
     window.renderAdminResultTable();
     window.renderAdminRankTable();
     window.renderLotteryCancelPanel();
+    window.renderPublishStatus();
     window.renderAdminRequests();
     window.renderHistoryPanel();
     scheduleAutoLotteryTimer();
@@ -1508,21 +1622,23 @@ window.setAllParticipants = async function(val) {
   // 手動修正をクラウドに保存する関数
   window.updateAdminAssignment = function(slot, val) {
     const round = getActiveRound();
-    if (!round.assignments) round.assignments = {};
-    round.assignments[slot] = val;
+    const draftAssignments = getDraftAssignments(round);
+    draftAssignments[slot] = val;
     saveData();
     window.renderAdminRankTable();
     window.renderLotteryCancelPanel();
+    window.renderPublishStatus();
     window.updateAdminSummary();
   }
 
   window.renderAdminResultTable = function() {
     const round = getActiveRound();
     const tbody = document.querySelector('#resultTableAdmin tbody');
+    const draftAssignments = getDraftAssignments(round);
     tbody.innerHTML = '';
     (round.slots || []).forEach(slot => {
       let selectHTML = `<select onchange="updateAdminAssignment('${slot}', this.value)"><option value="">-- 未定 --</option>`;
-      (round.rooms || []).forEach(r => { selectHTML += `<option value="${r}" ${(round.assignments || {})[slot] === r ? 'selected' : ''}>${r}</option>`; });
+      (round.rooms || []).forEach(r => { selectHTML += `<option value="${r}" ${draftAssignments[slot] === r ? 'selected' : ''}>${r}</option>`; });
       tbody.innerHTML += `<tr><td>${slot}</td><td>${selectHTML}</select></td></tr>`;
     });
   }
@@ -1531,15 +1647,16 @@ window.setAllParticipants = async function(val) {
     const round = getActiveRound();
     const tbody = document.querySelector('#cancelLotteryTable tbody');
     const summary = document.getElementById('cancelLotterySummary');
+    const draftAssignments = getDraftAssignments(round);
     if (!tbody || !summary) return;
 
     tbody.innerHTML = '';
     const assignedEntries = (round.slots || []).map(slot => ({
       slot,
-      room: (round.assignments || {})[slot] || ''
+      room: draftAssignments[slot] || ''
     }));
     const assignedCount = assignedEntries.filter(e => !!e.room).length;
-    summary.textContent = `現在の割当: ${assignedCount}/${(round.slots || []).length || 0}`;
+    summary.textContent = `管理者確認用の割当: ${assignedCount}/${(round.slots || []).length || 0}`;
 
     assignedEntries.forEach(({ slot, room }) => {
       tbody.innerHTML += `<tr><td>${slot}</td><td><strong>${room || '未定'}</strong></td></tr>`;
@@ -1548,19 +1665,21 @@ window.setAllParticipants = async function(val) {
 
   window.cancelLotteryResults = async function() {
     const round = getActiveRound();
-    const assignedCount = Object.values(round.assignments || {}).filter(v => !!v).length;
+    const draftAssignments = getDraftAssignments(round);
+    const assignedCount = countAssignedEntries(draftAssignments);
     if (assignedCount === 0) {
       alert("取り消す割当結果がありません。");
       return;
     }
-    if (!confirm(`現在の割当 ${assignedCount} 件を取り消します。よろしいですか？`)) return;
+    if (!confirm(`管理者確認用の割当 ${assignedCount} 件を取り消します。よろしいですか？`)) return;
 
-    round.assignments = {};
+    round.draftAssignments = cloneAssignmentsForSlots(round, {});
     await saveData();
 
     window.renderAdminResultTable();
     window.renderAdminRankTable();
     window.renderLotteryCancelPanel();
+    window.renderPublishStatus();
     window.updateAdminSummary();
     alert("抽選結果を取り消しました。");
   }
@@ -1579,14 +1698,34 @@ window.setAllParticipants = async function(val) {
   window.renderAdminRankTable = function() {
     const round = getActiveRound();
     const tbody = document.querySelector('#resultRankTableAdmin tbody');
+    const draftAssignments = getDraftAssignments(round);
     if (!tbody) return;
     tbody.innerHTML = '';
 
     (round.slots || []).forEach(slot => {
-      const room = (round.assignments || {})[slot] || '';
+      const room = draftAssignments[slot] || '';
       const rankLabel = window.getPreferenceRankLabel(room, slot);
       tbody.innerHTML += `<tr><td>${slot}</td><td><strong>${room || '-'}</strong></td><td>${rankLabel}</td></tr>`;
     });
+  }
+
+  window.publishResultsToStudents = async function() {
+    const round = getActiveRound();
+    const draftAssignments = getDraftAssignments(round);
+    const assignedCount = countAssignedEntries(draftAssignments);
+    if (assignedCount === 0) {
+      alert("反映する抽選結果がありません。");
+      return;
+    }
+    if (!confirm("現在の管理者確認用の結果を学生へ反映しますか？")) return;
+
+    round.assignments = cloneAssignmentsForSlots(round, draftAssignments);
+    round.publishedAt = nowISO();
+    await saveData();
+
+    window.renderPublishStatus();
+    window.updateAdminSummary();
+    alert("学生向けの結果を反映しました。");
   }
 
   // ---- 割当ロジック ----
@@ -1846,16 +1985,15 @@ window.setAllParticipants = async function(val) {
     const remainingSlots = slots.filter((slot, idx) => !submittedResult.usedSlotIndexes.has(idx));
     const randomAssignments = assignRandomSlotsToUnsubmitted(remainingSlots, unsubmittedCopies);
 
-    // 結果を round.assignments に反映
-    round.assignments = {};
-    slots.forEach(s => { round.assignments[s] = ""; });
+    // 結果を管理者確認用の下書きに反映
+    round.draftAssignments = cloneAssignmentsForSlots(round, {});
 
     submittedResult.assignments.forEach(({ slot, room }) => {
-      round.assignments[slot] = room;
+      round.draftAssignments[slot] = room;
     });
 
     randomAssignments.forEach(({ slot, room }) => {
-      round.assignments[slot] = room;
+      round.draftAssignments[slot] = room;
     });
 
     if (auto) {
@@ -1874,10 +2012,11 @@ window.setAllParticipants = async function(val) {
     window.renderAdminResultTable();
     window.renderAdminRankTable();
     window.renderLotteryCancelPanel();
+    window.renderPublishStatus();
     window.updateAdminSummary();
 
     if (showAlert) {
-      const messages = ["抽選完了！"];
+      const messages = ["抽選完了！学生にはまだ反映されていません。"];
       if (unsubmittedCopies.length > 0) {
         messages.push(`未提出 ${unsubmittedCopies.length} 件分は、残りの候補枠からランダムに割り当てました。`);
       }
@@ -1897,8 +2036,9 @@ window.setAllParticipants = async function(val) {
 
   window.exportCSV = function() {
     const round = getActiveRound();
+    const draftAssignments = getDraftAssignments(round);
     let csvContent = "data:text/csv;charset=utf-8,\uFEFF候補枠,担当部屋番号\n";
-    (round.slots || []).forEach(s => csvContent += `"${s}","${(round.assignments || {})[s] || ""}"\n`);
+    (round.slots || []).forEach(s => csvContent += `"${s}","${draftAssignments[s] || ""}"\n`);
     const link = document.createElement("a");
     link.setAttribute("href", encodeURI(csvContent));
     link.setAttribute("download", "dormitory_assignment.csv");
@@ -1929,7 +2069,8 @@ window.setAllParticipants = async function(val) {
       participants: {},
       deadline: "",
       startPointer: 0,
-      assignments: {}
+      assignments: {},
+      draftAssignments: {}
     };
     (nextRound.rooms || []).forEach(r => nextRound.participants[r] = { isParticipating: true, requests: [] });
 
