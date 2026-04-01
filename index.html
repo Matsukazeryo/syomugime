@@ -1713,8 +1713,8 @@ window.setAllParticipants = async function(val) {
     const round = getActiveRound();
     const draftAssignments = getDraftAssignments(round);
     const assignedCount = countAssignedEntries(draftAssignments);
-    if (assignedCount === 0) {
-      alert("反映する抽選結果がありません。");
+    if (assignedCount === 0 && !haveDraftChanges(round)) {
+      alert("反映する変更がありません。");
       return;
     }
     if (!confirm("現在の管理者確認用の結果を学生へ反映しますか？")) return;
