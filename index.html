@@ -612,14 +612,10 @@
   let autoLotteryTimer = null;
   let autoLotteryInProgress = false;
   const APP_BOOT_HTML_SNAPSHOT = document.documentElement.outerHTML;
-  const APP_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
-  const APP_UPDATE_CHECK_MIN_GAP_MS = 15 * 1000;
   const APP_AUTO_REFRESH_GUARD_MS = 60 * 1000;
   const APP_AUTO_REFRESH_SESSION_KEY = "dormitory-app-last-auto-refresh";
+  const APP_UPDATE_SKIP_UA_RE = /Line\/|FBAN|FBAV|Instagram|Twitter/i;
   let appUpdateCheckInFlight = false;
-  let appUpdateIntervalId = null;
-  let lastAppUpdateCheckAt = 0;
-  let appRefreshPending = false;
 
   const makeRoundId = () => `round-${Date.now()}`;
   const nowISO = () => new Date().toISOString();
@@ -635,20 +631,40 @@
     return url.toString();
   }
 
+  function shouldSkipAppUpdateCheck() {
+    if (!/^https?:$/i.test(window.location.protocol || "")) return true;
+    const ua = navigator.userAgent || "";
+    return APP_UPDATE_SKIP_UA_RE.test(ua);
+  }
+
+  function getLastAutoRefreshAt() {
+    try {
+      return Number(sessionStorage.getItem(APP_AUTO_REFRESH_SESSION_KEY) || "0");
+    } catch (_error) {
+      return 0;
+    }
+  }
+
+  function setLastAutoRefreshAt(timestamp) {
+    try {
+      sessionStorage.setItem(APP_AUTO_REFRESH_SESSION_KEY, String(timestamp));
+    } catch (_error) {
+      // sessionStorage が使えない環境ではガードだけ省略する
+    }
+  }
+
   function refreshAppToLatest(now = Date.now()) {
-    const lastAutoRefresh = Number(sessionStorage.getItem(APP_AUTO_REFRESH_SESSION_KEY) || "0");
+    const lastAutoRefresh = getLastAutoRefreshAt();
     if (now - lastAutoRefresh <= APP_AUTO_REFRESH_GUARD_MS) return false;
-    sessionStorage.setItem(APP_AUTO_REFRESH_SESSION_KEY, String(now));
-    appRefreshPending = false;
+    setLastAutoRefreshAt(now);
     window.location.replace(buildFreshAppUrl());
     return true;
   }
 
   async function checkForAppUpdate({ forceReloadIfFound = false, reason = "manual" } = {}) {
-    const now = Date.now();
+    if (shouldSkipAppUpdateCheck()) return false;
     if (appUpdateCheckInFlight) return false;
-    if (!forceReloadIfFound && now - lastAppUpdateCheckAt < APP_UPDATE_CHECK_MIN_GAP_MS) return false;
-    lastAppUpdateCheckAt = now;
+    const now = Date.now();
     appUpdateCheckInFlight = true;
 
     try {
@@ -659,49 +675,17 @@
 
       const remoteHtml = normalizeHtmlForUpdateCheck(await response.text());
       const currentHtml = normalizeHtmlForUpdateCheck(APP_BOOT_HTML_SNAPSHOT);
-      if (!remoteHtml || remoteHtml === currentHtml) {
-        appRefreshPending = false;
-        return false;
-      }
-
-      if (forceReloadIfFound || document.visibilityState === "hidden") {
+      if (!remoteHtml || remoteHtml === currentHtml) return false;
+      if (forceReloadIfFound) {
         return refreshAppToLatest(now);
       }
-
-      appRefreshPending = true;
-      return true;
+      return false;
     } catch (error) {
       console.warn("App update check failed:", reason, error);
       return false;
     } finally {
       appUpdateCheckInFlight = false;
     }
-  }
-
-  function startAppUpdateChecks() {
-    if (appUpdateIntervalId) return;
-
-    appUpdateIntervalId = window.setInterval(() => {
-      void checkForAppUpdate({ reason: "interval" });
-    }, APP_UPDATE_CHECK_INTERVAL_MS);
-
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") {
-        if (appRefreshPending) {
-          refreshAppToLatest();
-          return;
-        }
-        void checkForAppUpdate({ forceReloadIfFound: true, reason: "visibility" });
-      }
-    });
-
-    window.addEventListener("focus", () => {
-      if (appRefreshPending) {
-        refreshAppToLatest();
-        return;
-      }
-      void checkForAppUpdate({ forceReloadIfFound: true, reason: "focus" });
-    });
   }
 
   function cloneAssignmentsForSlots(round, assignments) {
@@ -832,7 +816,6 @@
   window.onload = async () => {
     const refreshed = await checkForAppUpdate({ forceReloadIfFound: true, reason: "startup" });
     if (refreshed) return;
-    startAppUpdateChecks();
 
     try {
       const docSnap = await getDoc(dbRef);
