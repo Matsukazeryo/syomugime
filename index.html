@@ -133,6 +133,12 @@
       gap: 0.55rem;
       margin-top: 1.2rem;
     }
+    .step-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-bottom: 1rem;
+    }
 
     table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.9rem; }
     th, td { padding: 0.52rem; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -334,6 +340,9 @@
 
   <div id="step2" class="card step-section">
     <h2>2. 希望提出 / 結果確認（部屋：<span id="currentRoomDisplay" style="color: var(--primary);"></span>）</h2>
+    <div class="step-toolbar">
+      <button class="outline" onclick="goToStep1()">← 最初の画面に戻る</button>
+    </div>
     <div id="submissionArea">
       <div id="multiAssignNotice" class="alert" style="display:none; margin-bottom:1rem;"></div>
       <div id="currentStatusArea" class="status-box" style="display: none;"></div>
@@ -358,10 +367,6 @@
 
     <div id="personalResultArea" style="display: none;">
       <div class="status-box highlight-result" id="personalResultBox"></div>
-    </div>
-
-    <div style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem;">
-      <button class="outline" onclick="goToStep1()">← 最初の画面に戻る</button>
     </div>
   </div>
 </div>
