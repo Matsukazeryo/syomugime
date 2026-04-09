@@ -201,53 +201,6 @@
       white-space: nowrap;
       box-shadow: 0 8px 18px rgba(11, 109, 242, 0.18);
     }
-    .app-update-banner {
-      position: fixed;
-      top: 78px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 40;
-      display: none;
-      width: min(940px, calc(100% - 1.4rem));
-      padding: 0.9rem 1rem;
-      border-radius: 12px;
-      background: rgba(15, 23, 42, 0.96);
-      color: #fff;
-      box-shadow: 0 16px 32px rgba(15, 23, 42, 0.24);
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.9rem;
-    }
-    .app-update-banner.show {
-      display: flex;
-    }
-    .app-update-copy strong {
-      display: block;
-      font-size: 0.96rem;
-      line-height: 1.4;
-    }
-    .app-update-copy p {
-      margin: 0.15rem 0 0;
-      font-size: 0.84rem;
-      color: rgba(255, 255, 255, 0.82);
-    }
-    .app-update-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.55rem;
-      justify-content: flex-end;
-    }
-    .app-update-actions button {
-      box-shadow: none;
-    }
-    .app-update-actions .outline {
-      border-color: rgba(255, 255, 255, 0.42);
-      color: #fff;
-    }
-    .app-update-actions .outline:hover {
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
-    }
 
     .admin-summary-grid {
       display: grid;
@@ -331,21 +284,6 @@
       .student-submit-btn {
         width: 100%;
       }
-      .app-update-banner {
-        top: 66px;
-        width: calc(100% - 1rem);
-        padding: 0.85rem 0.85rem 0.9rem;
-      }
-      .app-update-banner.show {
-        display: block;
-      }
-      .app-update-actions {
-        margin-top: 0.75rem;
-        justify-content: stretch;
-      }
-      .app-update-actions button {
-        width: 100%;
-      }
     }
   </style>
 </head>
@@ -364,17 +302,6 @@
     </label>
   </div>
 </header>
-
-<div id="appUpdateBanner" class="app-update-banner" role="status" aria-live="polite">
-  <div class="app-update-copy">
-    <strong>アプリの更新があります</strong>
-    <p>再登録し直さなくても、この画面から最新版へ切り替えられます。</p>
-  </div>
-  <div class="app-update-actions">
-    <button onclick="refreshAppToLatest()">最新に更新</button>
-    <button class="outline" onclick="dismissAppUpdateBanner()">あとで</button>
-  </div>
-</div>
 
 <div class="container" id="studentView">
   <div id="roundInfoStudent" class="status-box student-round-info">
@@ -692,7 +619,7 @@
   let appUpdateCheckInFlight = false;
   let appUpdateIntervalId = null;
   let lastAppUpdateCheckAt = 0;
-  let pendingAppRefreshUrl = "";
+  let appRefreshPending = false;
 
   const makeRoundId = () => `round-${Date.now()}`;
   const nowISO = () => new Date().toISOString();
@@ -708,26 +635,14 @@
     return url.toString();
   }
 
-  function hideAppUpdateBanner() {
-    const banner = document.getElementById("appUpdateBanner");
-    if (!banner) return;
-    banner.classList.remove("show");
+  function refreshAppToLatest(now = Date.now()) {
+    const lastAutoRefresh = Number(sessionStorage.getItem(APP_AUTO_REFRESH_SESSION_KEY) || "0");
+    if (now - lastAutoRefresh <= APP_AUTO_REFRESH_GUARD_MS) return false;
+    sessionStorage.setItem(APP_AUTO_REFRESH_SESSION_KEY, String(now));
+    appRefreshPending = false;
+    window.location.replace(buildFreshAppUrl());
+    return true;
   }
-
-  function showAppUpdateBanner(refreshUrl) {
-    const banner = document.getElementById("appUpdateBanner");
-    if (!banner) return;
-    pendingAppRefreshUrl = refreshUrl || buildFreshAppUrl();
-    banner.classList.add("show");
-  }
-
-  window.dismissAppUpdateBanner = function() {
-    hideAppUpdateBanner();
-  };
-
-  window.refreshAppToLatest = function() {
-    window.location.replace(pendingAppRefreshUrl || buildFreshAppUrl());
-  };
 
   async function checkForAppUpdate({ forceReloadIfFound = false, reason = "manual" } = {}) {
     const now = Date.now();
@@ -745,22 +660,16 @@
       const remoteHtml = normalizeHtmlForUpdateCheck(await response.text());
       const currentHtml = normalizeHtmlForUpdateCheck(APP_BOOT_HTML_SNAPSHOT);
       if (!remoteHtml || remoteHtml === currentHtml) {
-        hideAppUpdateBanner();
+        appRefreshPending = false;
         return false;
       }
 
-      const refreshUrl = buildFreshAppUrl();
-      if (forceReloadIfFound) {
-        const lastAutoRefresh = Number(sessionStorage.getItem(APP_AUTO_REFRESH_SESSION_KEY) || "0");
-        if (now - lastAutoRefresh > APP_AUTO_REFRESH_GUARD_MS) {
-          sessionStorage.setItem(APP_AUTO_REFRESH_SESSION_KEY, String(now));
-          window.location.replace(refreshUrl);
-          return true;
-        }
+      if (forceReloadIfFound || document.visibilityState === "hidden") {
+        return refreshAppToLatest(now);
       }
 
-      showAppUpdateBanner(refreshUrl);
-      return false;
+      appRefreshPending = true;
+      return true;
     } catch (error) {
       console.warn("App update check failed:", reason, error);
       return false;
@@ -778,12 +687,20 @@
 
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
-        void checkForAppUpdate({ reason: "visibility" });
+        if (appRefreshPending) {
+          refreshAppToLatest();
+          return;
+        }
+        void checkForAppUpdate({ forceReloadIfFound: true, reason: "visibility" });
       }
     });
 
     window.addEventListener("focus", () => {
-      void checkForAppUpdate({ reason: "focus" });
+      if (appRefreshPending) {
+        refreshAppToLatest();
+        return;
+      }
+      void checkForAppUpdate({ forceReloadIfFound: true, reason: "focus" });
     });
   }
 
