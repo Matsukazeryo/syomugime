@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>寮庶務当 割当アプリ</title>
   <style>
     :root {
@@ -80,6 +83,15 @@
     button.danger { background-color: var(--danger); }
     button.danger:hover { background-color: #c92a2a; }
     button:disabled { background-color: #c6d0dc; cursor: not-allowed; }
+    .student-submit-btn {
+      min-width: 180px;
+      min-height: 54px;
+      padding: 0.85rem 1.35rem;
+      border-radius: 10px;
+      font-size: 1.02rem;
+      font-weight: 800;
+      box-shadow: 0 8px 18px rgba(11, 109, 242, 0.18);
+    }
     
     input[type="datetime-local"], input[type="date"], select, textarea, input[type="number"], input[type="password"], input[type="text"] {
       width: 100%;
@@ -189,6 +201,53 @@
       white-space: nowrap;
       box-shadow: 0 8px 18px rgba(11, 109, 242, 0.18);
     }
+    .app-update-banner {
+      position: fixed;
+      top: 78px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 40;
+      display: none;
+      width: min(940px, calc(100% - 1.4rem));
+      padding: 0.9rem 1rem;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.96);
+      color: #fff;
+      box-shadow: 0 16px 32px rgba(15, 23, 42, 0.24);
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.9rem;
+    }
+    .app-update-banner.show {
+      display: flex;
+    }
+    .app-update-copy strong {
+      display: block;
+      font-size: 0.96rem;
+      line-height: 1.4;
+    }
+    .app-update-copy p {
+      margin: 0.15rem 0 0;
+      font-size: 0.84rem;
+      color: rgba(255, 255, 255, 0.82);
+    }
+    .app-update-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+      justify-content: flex-end;
+    }
+    .app-update-actions button {
+      box-shadow: none;
+    }
+    .app-update-actions .outline {
+      border-color: rgba(255, 255, 255, 0.42);
+      color: #fff;
+    }
+    .app-update-actions .outline:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
 
     .admin-summary-grid {
       display: grid;
@@ -269,6 +328,24 @@
       .student-next-btn {
         width: 100%;
       }
+      .student-submit-btn {
+        width: 100%;
+      }
+      .app-update-banner {
+        top: 66px;
+        width: calc(100% - 1rem);
+        padding: 0.85rem 0.85rem 0.9rem;
+      }
+      .app-update-banner.show {
+        display: block;
+      }
+      .app-update-actions {
+        margin-top: 0.75rem;
+        justify-content: stretch;
+      }
+      .app-update-actions button {
+        width: 100%;
+      }
     }
   </style>
 </head>
@@ -287,6 +364,17 @@
     </label>
   </div>
 </header>
+
+<div id="appUpdateBanner" class="app-update-banner" role="status" aria-live="polite">
+  <div class="app-update-copy">
+    <strong>アプリの更新があります</strong>
+    <p>再登録し直さなくても、この画面から最新版へ切り替えられます。</p>
+  </div>
+  <div class="app-update-actions">
+    <button onclick="refreshAppToLatest()">最新に更新</button>
+    <button class="outline" onclick="dismissAppUpdateBanner()">あとで</button>
+  </div>
+</div>
 
 <div class="container" id="studentView">
   <div id="roundInfoStudent" class="status-box student-round-info">
@@ -352,7 +440,7 @@
       </p>
       <div id="requestSelectors"></div>
       <div class="action-row">
-        <button id="submitBtn" onclick="submitRequest()">提出する</button>
+        <button id="submitBtn" class="student-submit-btn" onclick="submitRequest()">提出する</button>
       </div>
       <p class="small-note" style="margin-top:0.65rem;">候補枠の後ろに表示される人数は、現在の希望人数（全希望の合計）です。</p>
       <h3 style="margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1rem;">現在の候補枠ごとの希望人数（リアルタイム更新）</h3>
@@ -596,10 +684,108 @@
   let currentStudentRoom = "";
   let autoLotteryTimer = null;
   let autoLotteryInProgress = false;
+  const APP_BOOT_HTML_SNAPSHOT = document.documentElement.outerHTML;
+  const APP_UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+  const APP_UPDATE_CHECK_MIN_GAP_MS = 15 * 1000;
+  const APP_AUTO_REFRESH_GUARD_MS = 60 * 1000;
+  const APP_AUTO_REFRESH_SESSION_KEY = "dormitory-app-last-auto-refresh";
+  let appUpdateCheckInFlight = false;
+  let appUpdateIntervalId = null;
+  let lastAppUpdateCheckAt = 0;
+  let pendingAppRefreshUrl = "";
 
   const makeRoundId = () => `round-${Date.now()}`;
   const nowISO = () => new Date().toISOString();
   const countAssignedEntries = (assignments) => Object.values(assignments || {}).filter(v => !!v).length;
+
+  function normalizeHtmlForUpdateCheck(html) {
+    return (html || "").replace(/\r\n/g, "\n").trim();
+  }
+
+  function buildFreshAppUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("_appv", String(Date.now()));
+    return url.toString();
+  }
+
+  function hideAppUpdateBanner() {
+    const banner = document.getElementById("appUpdateBanner");
+    if (!banner) return;
+    banner.classList.remove("show");
+  }
+
+  function showAppUpdateBanner(refreshUrl) {
+    const banner = document.getElementById("appUpdateBanner");
+    if (!banner) return;
+    pendingAppRefreshUrl = refreshUrl || buildFreshAppUrl();
+    banner.classList.add("show");
+  }
+
+  window.dismissAppUpdateBanner = function() {
+    hideAppUpdateBanner();
+  };
+
+  window.refreshAppToLatest = function() {
+    window.location.replace(pendingAppRefreshUrl || buildFreshAppUrl());
+  };
+
+  async function checkForAppUpdate({ forceReloadIfFound = false, reason = "manual" } = {}) {
+    const now = Date.now();
+    if (appUpdateCheckInFlight) return false;
+    if (!forceReloadIfFound && now - lastAppUpdateCheckAt < APP_UPDATE_CHECK_MIN_GAP_MS) return false;
+    lastAppUpdateCheckAt = now;
+    appUpdateCheckInFlight = true;
+
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("__app_update_check", String(now));
+      const response = await fetch(url.toString(), { cache: "no-store" });
+      if (!response.ok) return false;
+
+      const remoteHtml = normalizeHtmlForUpdateCheck(await response.text());
+      const currentHtml = normalizeHtmlForUpdateCheck(APP_BOOT_HTML_SNAPSHOT);
+      if (!remoteHtml || remoteHtml === currentHtml) {
+        hideAppUpdateBanner();
+        return false;
+      }
+
+      const refreshUrl = buildFreshAppUrl();
+      if (forceReloadIfFound) {
+        const lastAutoRefresh = Number(sessionStorage.getItem(APP_AUTO_REFRESH_SESSION_KEY) || "0");
+        if (now - lastAutoRefresh > APP_AUTO_REFRESH_GUARD_MS) {
+          sessionStorage.setItem(APP_AUTO_REFRESH_SESSION_KEY, String(now));
+          window.location.replace(refreshUrl);
+          return true;
+        }
+      }
+
+      showAppUpdateBanner(refreshUrl);
+      return false;
+    } catch (error) {
+      console.warn("App update check failed:", reason, error);
+      return false;
+    } finally {
+      appUpdateCheckInFlight = false;
+    }
+  }
+
+  function startAppUpdateChecks() {
+    if (appUpdateIntervalId) return;
+
+    appUpdateIntervalId = window.setInterval(() => {
+      void checkForAppUpdate({ reason: "interval" });
+    }, APP_UPDATE_CHECK_INTERVAL_MS);
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        void checkForAppUpdate({ reason: "visibility" });
+      }
+    });
+
+    window.addEventListener("focus", () => {
+      void checkForAppUpdate({ reason: "focus" });
+    });
+  }
 
   function cloneAssignmentsForSlots(round, assignments) {
     const copy = {};
@@ -727,6 +913,10 @@
 
   // アプリ起動時のデータ読み込み
   window.onload = async () => {
+    const refreshed = await checkForAppUpdate({ forceReloadIfFound: true, reason: "startup" });
+    if (refreshed) return;
+    startAppUpdateChecks();
+
     try {
       const docSnap = await getDoc(dbRef);
       if (!docSnap.exists()) {
