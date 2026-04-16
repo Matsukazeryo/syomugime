@@ -428,11 +428,16 @@
 
       <h3 style="margin-top:0;">回（今回/次回）の管理</h3>
       <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.75rem;">
-        「今回」を履歴として保存してから、部屋番号や候補枠を変更して「次回」を新しく作成できます。
+        「今回」を履歴として保存してから、部屋番号・候補枠・参加フラグを引き継いだ「次回」を新しく作成できます。
       </p>
       <label>現在編集している回</label>
-      <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:1rem;">
-        <select id="roundSelect" style="margin-bottom:0;"></select>
+      <div class="input-row" style="margin-bottom:0.85rem;">
+        <select id="roundSelect" class="input-inline" style="margin-bottom:0;"></select>
+        <button id="deleteSelectedRoundBtn" class="danger" onclick="deleteSelectedRound()" style="white-space:nowrap;">この回を削除</button>
+      </div>
+      <label>次に作る回の名前</label>
+      <div class="input-row" style="margin-bottom:1rem;">
+        <input type="text" id="newRoundName" class="input-inline" placeholder="例：2026年6月 第2回" style="margin-bottom:0;">
         <button class="outline" onclick="createNextRoundFromCurrent()" style="white-space:nowrap;">今回を保存して次回を作成</button>
       </div>
       <label>回の名前（任意）</label>
@@ -560,10 +565,13 @@
     <div id="tab-history" class="admin-panel">
       <h2>過去の回（履歴）</h2>
       <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
-        ここでは「保存済みの過去回」の結果を閲覧できます（編集はできません）。
+        ここでは保存済みの回の結果を閲覧できます。不要な回は削除できます。
       </p>
       <label>表示する回</label>
       <select id="historySelect"></select>
+      <div class="action-row" style="margin-top:0.75rem; margin-bottom:1rem;">
+        <button id="deleteHistorySelectedRoundBtn" class="danger" onclick="deleteHistorySelectedRound()">表示中の回を削除</button>
+      </div>
 
       <div class="table-container" style="margin-top: 1rem;">
         <table id="historyResultTable">
@@ -2147,26 +2155,98 @@ window.setAllParticipants = async function(val) {
     window.loadAdminData();
   }
 
+  function buildParticipantsForNextRound(sourceRound) {
+    const participants = {};
+    (sourceRound.rooms || []).forEach(room => {
+      const currentParticipant = sourceRound.participants?.[room];
+      participants[room] = {
+        isParticipating: currentParticipant?.isParticipating ?? true,
+        requests: []
+      };
+    });
+    return participants;
+  }
+
+  function getRoundCount() {
+    return Object.keys(db.rounds || {}).filter(rid => db.rounds?.[rid]).length;
+  }
+
+  function syncRoundDeleteButtons() {
+    const isDeleteDisabled = getRoundCount() <= 1;
+    const currentDeleteBtn = document.getElementById('deleteSelectedRoundBtn');
+    const historyDeleteBtn = document.getElementById('deleteHistorySelectedRoundBtn');
+    const roundSelect = document.getElementById('roundSelect');
+    const historySelect = document.getElementById('historySelect');
+
+    if (currentDeleteBtn) currentDeleteBtn.disabled = isDeleteDisabled || !roundSelect?.value;
+    if (historyDeleteBtn) historyDeleteBtn.disabled = isDeleteDisabled || !historySelect?.value;
+  }
+
+  async function deleteRoundById(rid) {
+    if (!rid || !db.rounds?.[rid]) {
+      alert("回が見つかりません。");
+      return;
+    }
+    if (getRoundCount() <= 1) {
+      alert("最後の1回は削除できません。");
+      return;
+    }
+
+    const round = db.rounds[rid];
+    const label = `${(round.name && round.name.trim()) ? round.name.trim() : '（無名）'} / ${new Date(round.createdAt || Date.now()).toLocaleString()}`;
+    if (!confirm(`「${label}」を削除しますか？\nこの操作は元に戻せません。`)) return;
+
+    const wasCurrentRound = db.currentRoundId === rid;
+    delete db.rounds[rid];
+    db.historyOrder = (db.historyOrder || []).filter(id => id && id !== rid && db.rounds?.[id]);
+
+    if (wasCurrentRound || !db.rounds?.[db.currentRoundId]) {
+      db.currentRoundId = (db.historyOrder || []).find(id => db.rounds?.[id]) || Object.keys(db.rounds || {}).find(id => db.rounds?.[id]) || "";
+    }
+
+    await saveData();
+    window.loadAdminData();
+    window.renderHistoryPanel();
+    alert("回を削除しました。");
+  }
+
+  window.deleteSelectedRound = async function() {
+    await deleteRoundById(document.getElementById('roundSelect')?.value);
+  }
+
+  window.deleteHistorySelectedRound = async function() {
+    await deleteRoundById(document.getElementById('historySelect')?.value);
+  }
+
   window.createNextRoundFromCurrent = async function() {
     const current = getActiveRound();
+    const currentRoundNameInput = document.getElementById('roundName');
+    const nextRoundNameInput = document.getElementById('newRoundName');
+    const nextRoundName = (nextRoundNameInput?.value || '').trim();
+
+    if (currentRoundNameInput) current.name = currentRoundNameInput.value || '';
+    if (!nextRoundName) {
+      alert("次に作る回の名前を入力してください。");
+      if (nextRoundNameInput) nextRoundNameInput.focus();
+      return;
+    }
 
     // 今回を「履歴として残す」ため、現在のroundはそのまま保持し、次回roundを新規作成してアクティブに切り替える
     const newId = makeRoundId();
 
-    // 次回は、rooms/slotsは“現在の編集内容”をベースにコピー（その後自由に編集できる）
+    // 次回は、rooms/slotsと参加フラグを“現在の編集内容”から引き継ぐ
     const nextRound = {
       id: newId,
-      name: "次回",
+      name: nextRoundName,
       createdAt: nowISO(),
       rooms: [...(current.rooms || [])],
       slots: [...(current.slots || [])],
-      participants: {},
+      participants: buildParticipantsForNextRound(current),
       deadline: "",
       startPointer: 0,
       assignments: {},
       draftAssignments: {}
     };
-    (nextRound.rooms || []).forEach(r => nextRound.participants[r] = { isParticipating: true, requests: [] });
 
     db.rounds[newId] = nextRound;
     db.currentRoundId = newId;
@@ -2174,7 +2254,8 @@ window.setAllParticipants = async function(val) {
     db.historyOrder.unshift(newId);
 
     await saveData();
-    alert("次回を作成しました。『名簿・枠』で部屋番号/候補枠を変更してから、抽選を実行してください。");
+    if (nextRoundNameInput) nextRoundNameInput.value = '';
+    alert(`「${nextRoundName}」を作成しました。『名簿・枠』で部屋番号/候補枠を変更してから、抽選を実行してください。`);
     window.loadAdminData();
   }
 
@@ -2185,6 +2266,7 @@ window.setAllParticipants = async function(val) {
     if (!select || !resultTbody || !rankTbody) return;
 
     // 履歴セレクトは、現在の回も含めて表示（閲覧用）
+    const prevSelectedRid = select.value;
     select.innerHTML = '';
     (db.historyOrder || []).forEach(rid => {
       const r = db.rounds?.[rid];
@@ -2195,7 +2277,7 @@ window.setAllParticipants = async function(val) {
 
     // デフォルトは「ひとつ前（=保存された過去回）」があればそれ、なければ現在
     const defaultRid = (db.historyOrder || [])[1] || db.currentRoundId;
-    select.value = defaultRid;
+    select.value = (prevSelectedRid && db.rounds?.[prevSelectedRid]) ? prevSelectedRid : defaultRid;
 
     const render = (rid) => {
       const r = db.rounds?.[rid];
@@ -2224,7 +2306,11 @@ window.setAllParticipants = async function(val) {
     };
 
     render(select.value);
-    select.onchange = () => render(select.value);
+    syncRoundDeleteButtons();
+    select.onchange = () => {
+      render(select.value);
+      syncRoundDeleteButtons();
+    };
   }
 
   window.exportHistoryCSV = function() {
