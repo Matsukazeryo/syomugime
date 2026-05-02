@@ -497,6 +497,16 @@
 
     <div id="tab-requests" class="admin-panel">
       <h2>現在の希望状況確認 (リアルタイム)</h2>
+      <div class="status-box" style="margin-bottom: 1rem;">
+        <div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:0.6rem; align-items:center; margin-bottom:0.55rem;">
+          <div>
+            <div style="font-weight:800;">未提出者の部屋番号一覧</div>
+            <div id="adminUnsubmittedRoomsCount" class="small-note">未提出: -</div>
+          </div>
+          <button id="copyUnsubmittedRoomsBtn" class="outline" onclick="copyUnsubmittedRoomsList()">改行区切りでコピー</button>
+        </div>
+        <textarea id="adminUnsubmittedRoomsList" readonly spellcheck="false" placeholder="未提出者はいません。" style="min-height:120px; margin-bottom:0;"></textarea>
+      </div>
       <h3>部屋別の希望一覧</h3>
       <div class="table-container" style="max-height: 300px; overflow-y: auto;">
         <table id="adminRoomRequestsTable">
@@ -1628,6 +1638,18 @@
     const round = getActiveRound();
     window.updateAdminSummary();
 
+    const unsubmittedRooms = (round.rooms || []).filter(r => {
+      const participant = round.participants?.[r];
+      return participant?.isParticipating && !hasSubmittedRequests(r, round);
+    });
+    const unsubmittedText = unsubmittedRooms.join('\n');
+    const unsubmittedList = document.getElementById('adminUnsubmittedRoomsList');
+    const unsubmittedCount = document.getElementById('adminUnsubmittedRoomsCount');
+    const copyBtn = document.getElementById('copyUnsubmittedRoomsBtn');
+    if (unsubmittedList) unsubmittedList.value = unsubmittedText;
+    if (unsubmittedCount) unsubmittedCount.textContent = `未提出: ${unsubmittedRooms.length}件`;
+    if (copyBtn) copyBtn.disabled = unsubmittedRooms.length === 0;
+
     const roomTbody = document.querySelector('#adminRoomRequestsTable tbody');
     roomTbody.innerHTML = '';
     (round.rooms || []).forEach(r => {
@@ -1649,6 +1671,39 @@
       });
       slotTbody.innerHTML += `<tr><td>${slot}</td><td>${reqRooms[0].join(', ') || '-'}</td><td>${reqRooms[1].join(', ') || '-'}</td><td>${reqRooms[2].join(', ') || '-'}</td><td>${reqRooms[3].join(', ') || '-'}</td><td>${reqRooms[4].join(', ') || '-'}</td></tr>`;
     });
+  }
+
+  window.copyUnsubmittedRoomsList = async function() {
+    const textarea = document.getElementById('adminUnsubmittedRoomsList');
+    const button = document.getElementById('copyUnsubmittedRoomsBtn');
+    const text = textarea?.value || '';
+    if (!text.trim()) {
+      alert("未提出者はいません。");
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        textarea.focus();
+        textarea.select();
+        textarea.setSelectionRange(0, text.length);
+        document.execCommand('copy');
+      }
+      if (button) {
+        const originalLabel = button.textContent;
+        button.textContent = "コピーしました";
+        window.setTimeout(() => {
+          button.textContent = originalLabel;
+        }, 1400);
+      }
+    } catch (error) {
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, text.length);
+      alert("自動コピーに失敗しました。選択された内容を手動でコピーしてください。");
+    }
   }
 
   window.saveAdminSettings = function() {
