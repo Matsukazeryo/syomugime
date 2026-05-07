@@ -707,11 +707,28 @@
 
   function getRequestSetsForParticipant(participant) {
     if (!participant) return [];
-    const rawSets = Array.isArray(participant.requestSets) && participant.requestSets.length > 0
-      ? participant.requestSets
-      : (Array.isArray(participant.requests) ? [participant.requests] : []);
+    let rawSets = [];
+    if (Array.isArray(participant.requestSets) && participant.requestSets.length > 0) {
+      rawSets = participant.requestSets;
+    } else if (participant.requestSets && typeof participant.requestSets === "object" && Object.keys(participant.requestSets).length > 0) {
+      Object.keys(participant.requestSets).forEach(key => {
+        const index = Number(key);
+        if (Number.isInteger(index) && index >= 0) rawSets[index] = participant.requestSets[key];
+      });
+    } else if (Array.isArray(participant.requests)) {
+      rawSets = [participant.requests];
+    }
 
     return rawSets.map(set => Array.isArray(set) ? set.filter(Boolean).slice(0, 5) : []);
+  }
+
+  function serializeRequestSetsForFirestore(requestSets) {
+    const serialized = {};
+    (requestSets || []).forEach((set, index) => {
+      const cleaned = Array.isArray(set) ? set.filter(Boolean).slice(0, 5) : [];
+      if (cleaned.length > 0) serialized[String(index)] = cleaned;
+    });
+    return serialized;
   }
 
   function getActiveRooms(round) {
@@ -934,10 +951,10 @@
   function normalizeParticipants(round) {
     if (!round.participants) round.participants = {};
     (round.rooms || []).forEach(r => {
-      if (!round.participants[r]) round.participants[r] = { isParticipating: true, requests: [], requestSets: [] };
+      if (!round.participants[r]) round.participants[r] = { isParticipating: true, requests: [], requestSets: {} };
       if (typeof round.participants[r].isParticipating !== 'boolean') round.participants[r].isParticipating = true;
       const requestSets = getRequestSetsForParticipant(round.participants[r]);
-      round.participants[r].requestSets = requestSets;
+      round.participants[r].requestSets = serializeRequestSetsForFirestore(requestSets);
       round.participants[r].requests = requestSets[0] || [];
     });
     if (!round.assignments || typeof round.assignments !== 'object') round.assignments = {};
@@ -947,6 +964,10 @@
     } else {
       round.draftAssignments = cloneAssignmentsForSlots(round, round.draftAssignments);
     }
+  }
+
+  function normalizeDatabaseForSave() {
+    Object.values(db.rounds || {}).forEach(round => normalizeParticipants(round));
   }
 
   function migrateIfNeeded() {
@@ -1022,9 +1043,10 @@
           assignments: {},
           draftAssignments: {}
         };
-        round.rooms.forEach(r => round.participants[r] = { isParticipating: true, requests: [], requestSets: [] });
+        round.rooms.forEach(r => round.participants[r] = { isParticipating: true, requests: [], requestSets: {} });
 
         db = { adminPassword: "admin", currentRoundId: rid, rounds: { [rid]: round }, historyOrder: [rid] };
+        normalizeDatabaseForSave();
         await dbRef.set(db);
       } else {
         db = docSnap.data();
@@ -1099,6 +1121,7 @@
   // Firebaseへの保存関数
   async function saveData() {
     try {
+      normalizeDatabaseForSave();
       await dbRef.set(db);
     } catch(e) {
       alert("データの保存に失敗しました: " + e.message);
@@ -1698,8 +1721,8 @@
       }
       requestSets[copy.copyIndex] = reqs;
     }
-    if (!round.participants[currentStudentRoom]) round.participants[currentStudentRoom] = { isParticipating: true, requests: [], requestSets: [] };
-    round.participants[currentStudentRoom].requestSets = requestSets;
+    if (!round.participants[currentStudentRoom]) round.participants[currentStudentRoom] = { isParticipating: true, requests: [], requestSets: {} };
+    round.participants[currentStudentRoom].requestSets = serializeRequestSetsForFirestore(requestSets);
     round.participants[currentStudentRoom].requests = requestSets[0] || [];
 
     await saveData();
@@ -1964,10 +1987,10 @@
 window.toggleParticipant = async function(room, val) {
   const round = getActiveRound();
   if (!round.participants) round.participants = {};
-  if (!round.participants[room]) round.participants[room] = { isParticipating: true, requests: [], requestSets: [] };
+  if (!round.participants[room]) round.participants[room] = { isParticipating: true, requests: [], requestSets: {} };
   round.participants[room].isParticipating = !!val;
   const requestSets = getRequestSetsForParticipant(round.participants[room]);
-  round.participants[room].requestSets = requestSets;
+  round.participants[room].requestSets = serializeRequestSetsForFirestore(requestSets);
   round.participants[room].requests = requestSets[0] || [];
   await saveData();
   window.updateAdminSummary();
@@ -1978,10 +2001,10 @@ window.setAllParticipants = async function(val) {
   const round = getActiveRound();
   if (!round.participants) round.participants = {};
   (round.rooms || []).forEach(r => {
-    if (!round.participants[r]) round.participants[r] = { isParticipating: true, requests: [], requestSets: [] };
+    if (!round.participants[r]) round.participants[r] = { isParticipating: true, requests: [], requestSets: {} };
     round.participants[r].isParticipating = !!val;
     const requestSets = getRequestSetsForParticipant(round.participants[r]);
-    round.participants[r].requestSets = requestSets;
+    round.participants[r].requestSets = serializeRequestSetsForFirestore(requestSets);
     round.participants[r].requests = requestSets[0] || [];
   });
   await saveData();
@@ -2444,7 +2467,7 @@ window.setAllParticipants = async function(val) {
       participants[room] = {
         isParticipating: currentParticipant?.isParticipating ?? true,
         requests: [],
-        requestSets: []
+        requestSets: {}
       };
     });
     return participants;
