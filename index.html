@@ -151,6 +151,18 @@
       gap: 0.6rem;
       margin-bottom: 1rem;
     }
+    .request-set {
+      border: 1px solid #dce7f7;
+      border-radius: 10px;
+      padding: 0.9rem;
+      margin-bottom: 1rem;
+      background: #f9fbff;
+    }
+    .request-set-title {
+      font-weight: 800;
+      margin-bottom: 0.75rem;
+      color: #334155;
+    }
 
     table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.9rem; }
     th, td { padding: 0.52rem; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -638,6 +650,122 @@
   const makeRoundId = () => `round-${Date.now()}`;
   const nowISO = () => new Date().toISOString();
   const countAssignedEntries = (assignments) => Object.values(assignments || {}).filter(v => !!v).length;
+  const COPY_LABEL_SUFFIXES = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+
+  function getCopySuffix(copyIndex) {
+    return COPY_LABEL_SUFFIXES[copyIndex] || `(${copyIndex + 1})`;
+  }
+
+  function makeRoomCopyLabel(room, copyIndex, copyCount) {
+    return copyCount > 1 ? `${room}${getCopySuffix(copyIndex)}` : room;
+  }
+
+  function parseRoomCopyLabel(value) {
+    const text = String(value || "");
+    for (let i = 0; i < COPY_LABEL_SUFFIXES.length; i++) {
+      const suffix = COPY_LABEL_SUFFIXES[i];
+      if (text.endsWith(suffix)) {
+        return { room: text.slice(0, -suffix.length), copyIndex: i };
+      }
+    }
+    return { room: text, copyIndex: 0 };
+  }
+
+  function getRequestSetsForParticipant(participant) {
+    if (!participant) return [];
+    const rawSets = Array.isArray(participant.requestSets) && participant.requestSets.length > 0
+      ? participant.requestSets
+      : (Array.isArray(participant.requests) ? [participant.requests] : []);
+
+    return rawSets.map(set => Array.isArray(set) ? set.filter(Boolean).slice(0, 5) : []);
+  }
+
+  function getActiveRooms(round) {
+    return (round.rooms || []).filter(r => round.participants?.[r]?.isParticipating);
+  }
+
+  function getStartPointerIndex(round, activeRooms) {
+    if (!activeRooms.length) return 0;
+    if (round.startPointerRoom) {
+      const idx = activeRooms.indexOf(round.startPointerRoom);
+      if (idx !== -1) return idx;
+    }
+    return (round.startPointer || 0) % activeRooms.length;
+  }
+
+  function getAssignmentCopiesForRound(round) {
+    const activeRooms = getActiveRooms(round);
+    const slots = round.slots || [];
+    if (!activeRooms.length || !slots.length) return [];
+
+    const rawCopies = buildRoomCopies(activeRooms, slots.length, getStartPointerIndex(round, activeRooms));
+    const copyCounts = {};
+    rawCopies.forEach(copy => {
+      copyCounts[copy.room] = (copyCounts[copy.room] || 0) + 1;
+    });
+
+    return rawCopies.map(copy => ({
+      ...copy,
+      copyCount: copyCounts[copy.room] || 1,
+      label: makeRoomCopyLabel(copy.room, copy.copyIndex, copyCounts[copy.room] || 1)
+    }));
+  }
+
+  function getAssignmentCopiesForRoom(round, room) {
+    return getAssignmentCopiesForRound(round).filter(copy => copy.room === room);
+  }
+
+  function getRequestCopiesForRoom(round, room) {
+    const copies = getAssignmentCopiesForRoom(round, room);
+    if (copies.length > 1) return copies;
+    return [{ room, copyIndex: 0, copyCount: 1, label: room }];
+  }
+
+  function getRequestCopiesForRound(round) {
+    return getActiveRooms(round).flatMap(room => getRequestCopiesForRoom(round, room));
+  }
+
+  function getManualAssignmentOptions(round) {
+    const activeRooms = getActiveRooms(round);
+    const assignmentCopies = getAssignmentCopiesForRound(round);
+    const countByRoom = {};
+    assignmentCopies.forEach(copy => {
+      countByRoom[copy.room] = Math.max(countByRoom[copy.room] || 0, copy.copyCount || 1);
+    });
+
+    return activeRooms.flatMap(room => {
+      const copyCount = Math.max(1, countByRoom[room] || 1);
+      return Array.from({ length: copyCount }, (_, copyIndex) => ({
+        room,
+        copyIndex,
+        copyCount,
+        label: makeRoomCopyLabel(room, copyIndex, copyCount)
+      }));
+    });
+  }
+
+  function getSubmittedRequestsForCopy(copy, round) {
+    const participant = round.participants?.[copy.room];
+    const requestSets = getRequestSetsForParticipant(participant);
+    return requestSets[copy.copyIndex] || [];
+  }
+
+  function hasSubmittedRequestsForCopy(copy, round) {
+    return getSubmittedRequestsForCopy(copy, round).length > 0;
+  }
+
+  function hasSubmittedRequests(room, round) {
+    return getRequestCopiesForRoom(round, room).every(copy => hasSubmittedRequestsForCopy(copy, round));
+  }
+
+  function getAssignedEntriesForRoom(assignments, room) {
+    return Object.entries(assignments || {})
+      .map(([slot, value]) => {
+        const parsed = parseRoomCopyLabel(value);
+        return { slot, value, label: value, room: parsed.room, copyIndex: parsed.copyIndex };
+      })
+      .filter(entry => entry.room === room);
+  }
 
   function normalizeHtmlForUpdateCheck(html) {
     return (html || "").replace(/\r\n/g, "\n").trim();
@@ -763,9 +891,11 @@
   function normalizeParticipants(round) {
     if (!round.participants) round.participants = {};
     (round.rooms || []).forEach(r => {
-      if (!round.participants[r]) round.participants[r] = { isParticipating: true, requests: [] };
+      if (!round.participants[r]) round.participants[r] = { isParticipating: true, requests: [], requestSets: [] };
       if (typeof round.participants[r].isParticipating !== 'boolean') round.participants[r].isParticipating = true;
-      if (!Array.isArray(round.participants[r].requests)) round.participants[r].requests = [];
+      const requestSets = getRequestSetsForParticipant(round.participants[r]);
+      round.participants[r].requestSets = requestSets;
+      round.participants[r].requests = requestSets[0] || [];
     });
     if (!round.assignments || typeof round.assignments !== 'object') round.assignments = {};
     round.assignments = cloneAssignmentsForSlots(round, round.assignments);
@@ -852,7 +982,7 @@
           assignments: {},
           draftAssignments: {}
         };
-        round.rooms.forEach(r => round.participants[r] = { isParticipating: true, requests: [] });
+        round.rooms.forEach(r => round.participants[r] = { isParticipating: true, requests: [], requestSets: [] });
 
         db = { adminPassword: "admin", currentRoundId: rid, rounds: { [rid]: round }, historyOrder: [rid] };
         await setDoc(dbRef, db);
@@ -933,19 +1063,26 @@
   window.getSlotStats = function(slotName) {
     const round = getActiveRound();
     let stats = [0, 0, 0, 0, 0];
-    Object.values(round.participants || {}).forEach(p => {
-      if (p.isParticipating && p.requests) {
-        const idx = p.requests.indexOf(slotName);
-        if (idx !== -1 && idx < 5) stats[idx]++;
-      }
+    getRequestCopiesForRound(round).forEach(copy => {
+      const idx = getSubmittedRequestsForCopy(copy, round).indexOf(slotName);
+      if (idx !== -1 && idx < 5) stats[idx]++;
     });
+
+    // 枠数が未設定のときも、従来の1セット希望は混み具合に反映する
+    if (!(round.slots || []).length) {
+      Object.values(round.participants || {}).forEach(p => {
+        if (!p.isParticipating) return;
+        const idx = (getRequestSetsForParticipant(p)[0] || []).indexOf(slotName);
+        if (idx !== -1 && idx < 5) stats[idx]++;
+      });
+    }
     return stats;
   }
 
   function getRoundStats(round) {
     const rooms = round.rooms || [];
     const activeRooms = rooms.filter(r => round.participants?.[r]?.isParticipating);
-    const submittedRooms = activeRooms.filter(r => (round.participants?.[r]?.requests || []).length > 0);
+    const submittedRooms = activeRooms.filter(r => hasSubmittedRequests(r, round));
     const assignedCount = countAssignedEntries(getDraftAssignments(round));
     return {
       totalRooms: rooms.length,
@@ -1293,7 +1430,8 @@
     document.getElementById('currentRoomDisplay').textContent = room;
     const round = getActiveRound();
 
-    const currentReqs = round.participants[room]?.requests || [];
+    const requestCopies = getRequestCopiesForRoom(round, room);
+    const currentRequestSets = getRequestSetsForParticipant(round.participants?.[room]);
     const isParticipating = !!round.participants[room]?.isParticipating;
 
     if (window.isResultFinalized()) {
@@ -1304,32 +1442,37 @@
       const notice = document.getElementById('multiAssignNotice');
       if (notice) { notice.style.display = 'none'; notice.innerHTML = ''; }
 
-      let assignedSlots = [];
       const publishedAssignments = getPublishedAssignments(round);
-      for (let slot in publishedAssignments) {
-        if (publishedAssignments[slot] === room) assignedSlots.push(slot);
-      }
+      const assignedEntries = getAssignedEntriesForRoom(publishedAssignments, room);
       
       let html = `<h3 style="margin-top:0; color:var(--text);">割当結果</h3>`;
-      if (assignedSlots.length > 0) {
-        html += `<p style="font-size:1.3rem; font-weight:bold; color:var(--danger); margin-bottom:1rem;">👉 決定枠：<br>${assignedSlots.join('<br>')}</p>`;
-        if (assignedSlots.length >= 2) {
-          html += `<div class="alert" style="margin-bottom:1rem;">※候補枠数と参加人数の都合により、今回は <strong>${assignedSlots.length}回</strong> 割り当てられています。</div>`;
+      if (assignedEntries.length > 0) {
+        const assignedText = assignedEntries
+          .map(entry => `${entry.label}：${entry.slot}`)
+          .join('<br>');
+        html += `<p style="font-size:1.3rem; font-weight:bold; color:var(--danger); margin-bottom:1rem;">👉 決定枠：<br>${assignedText}</p>`;
+        if (assignedEntries.length >= 2) {
+          html += `<div class="alert" style="margin-bottom:1rem;">※候補枠数と参加人数の都合により、今回は <strong>${assignedEntries.length}回</strong> 割り当てられています。</div>`;
         }
       } else {
         html += `<p style="font-size:1.1rem; font-weight:bold; margin-bottom:1rem;">👉 今回の割当はありませんでした（または未定）</p>`;
       }
       
       html += `<strong>【提出していた希望】</strong><br>`;
-      if (currentReqs.length > 0) {
-        for(let i=0; i<5; i++) {
-          let req = currentReqs[i];
-          let matchText = (req && assignedSlots.includes(req)) ? ' <span style="color:var(--danger); font-weight:bold;">(決定！)</span>' : '';
-          html += `第${i+1}希望: ${req || 'なし'}${matchText}<br>`;
+      requestCopies.forEach((copy, copyIdx) => {
+        const reqs = currentRequestSets[copy.copyIndex] || [];
+        if (requestCopies.length > 1) html += `<div style="margin-top:${copyIdx === 0 ? '0.35rem' : '0.8rem'};"><strong>${copy.label}</strong><br>`;
+        if (reqs.length > 0) {
+          for(let i=0; i<5; i++) {
+            let req = reqs[i];
+            let matchText = (req && assignedEntries.some(entry => entry.copyIndex === copy.copyIndex && entry.slot === req)) ? ' <span style="color:var(--danger); font-weight:bold;">(決定！)</span>' : '';
+            html += `第${i+1}希望: ${req || 'なし'}${matchText}<br>`;
+          }
+        } else {
+          html += `希望の提出はありませんでした。<br>`;
         }
-      } else {
-        html += `希望の提出はありませんでした。<br>`;
-      }
+        if (requestCopies.length > 1) html += `</div>`;
+      });
       document.getElementById('personalResultBox').innerHTML = html;
 
     } else if (window.isDeadlinePassed()) {
@@ -1342,13 +1485,18 @@
       let html = `<h3 style="margin-top:0; color:var(--text);">結果は確認中です</h3>`;
       html += `<p style="font-size:1rem; font-weight:bold; margin-bottom:1rem;">管理者が抽選結果を確認しています。反映されるまでしばらくお待ちください。</p>`;
       html += `<strong>【提出していた希望】</strong><br>`;
-      if (currentReqs.length > 0) {
-        for (let i = 0; i < 5; i++) {
-          html += `第${i + 1}希望: ${currentReqs[i] || 'なし'}<br>`;
+      requestCopies.forEach((copy, copyIdx) => {
+        const reqs = currentRequestSets[copy.copyIndex] || [];
+        if (requestCopies.length > 1) html += `<div style="margin-top:${copyIdx === 0 ? '0.35rem' : '0.8rem'};"><strong>${copy.label}</strong><br>`;
+        if (reqs.length > 0) {
+          for (let i = 0; i < 5; i++) {
+            html += `第${i + 1}希望: ${reqs[i] || 'なし'}<br>`;
+          }
+        } else {
+          html += `希望の提出はありませんでした。<br>`;
         }
-      } else {
-        html += `希望の提出はありませんでした。<br>`;
-      }
+        if (requestCopies.length > 1) html += `</div>`;
+      });
       document.getElementById('personalResultBox').innerHTML = html;
 
     } else {
@@ -1366,33 +1514,11 @@
       // ルール：枠数 > 参加人数 のとき、追加の担当(+1回)は開始ポインタから順に割り当てる
       const notice = document.getElementById('multiAssignNotice');
       if (notice) {
-        const activeRooms = (round.rooms || []).filter(r => round.participants?.[r]?.isParticipating);
-        const P = activeRooms.length;
-        const S = (round.slots || []).length;
-
-        let ptr = 0;
-        if (P > 0) {
-          if (round.startPointerRoom) {
-            const idx = activeRooms.indexOf(round.startPointerRoom);
-            ptr = (idx !== -1) ? idx : ((round.startPointer || 0) % P);
-          } else {
-            ptr = (round.startPointer || 0) % P;
-          }
-        }
-
-        let count = 0;
-        if (P > 0) {
-          const base = Math.floor(S / P);
-          const rem = S % P;
-          const relIdx = (P > 0) ? (activeRooms.indexOf(room) - ptr + P) % P : -1;
-          if (relIdx >= 0) {
-            count = base + (relIdx < rem ? 1 : 0);
-          }
-        }
+        const count = requestCopies.length;
 
         if (count >= 2) {
           notice.style.display = 'block';
-          notice.innerHTML = `※今回の枠数と参加人数の都合により、この部屋は <strong>${count}回</strong> 割り当て対象になる可能性があります（ルールに基づく事前表示）。`;
+          notice.innerHTML = `※今回の枠数と参加人数の都合により、この部屋は <strong>${count}回</strong> 割り当て対象です。<strong>${requestCopies.map(copy => copy.label).join('、')}</strong> それぞれで第1〜第5希望を提出できます。`;
         } else {
           notice.style.display = 'none';
           notice.innerHTML = '';
@@ -1400,9 +1526,14 @@
       }
 
       const statusArea = document.getElementById('currentStatusArea');
-      if (currentReqs.length > 0) {
+      if (requestCopies.some(copy => (currentRequestSets[copy.copyIndex] || []).length > 0)) {
         let reqText = "<strong>【現在の提出内容】</strong><br>";
-        for(let i=0; i<5; i++) reqText += `第${i+1}希望: ${currentReqs[i] || 'なし'}<br>`;
+        requestCopies.forEach((copy, copyIdx) => {
+          const reqs = currentRequestSets[copy.copyIndex] || [];
+          if (requestCopies.length > 1) reqText += `<div style="margin-top:${copyIdx === 0 ? '0.35rem' : '0.8rem'};"><strong>${copy.label}</strong><br>`;
+          for(let i=0; i<5; i++) reqText += `第${i+1}希望: ${reqs[i] || 'なし'}<br>`;
+          if (requestCopies.length > 1) reqText += `</div>`;
+        });
         statusArea.innerHTML = reqText;
         statusArea.style.display = 'block';
       } else {
@@ -1411,14 +1542,29 @@
 
       const container = document.getElementById('requestSelectors');
       container.innerHTML = '';
-      for (let i = 1; i <= 5; i++) {
-        const wrap = document.createElement('div');
-        wrap.innerHTML = `<label for="req${i}">第${i}希望</label><select id="req${i}"><option value="">-- 希望なし --</option></select>`;
-        container.appendChild(wrap);
-        const sel = document.getElementById(`req${i}`);
-        (round.slots || []).forEach(slot => sel.appendChild(new Option(slot, slot)));
-        if (currentReqs[i-1]) sel.value = currentReqs[i-1];
-      }
+      requestCopies.forEach(copy => {
+        const section = document.createElement('div');
+        section.className = requestCopies.length > 1 ? 'request-set' : '';
+        if (requestCopies.length > 1) {
+          const title = document.createElement('div');
+          title.className = 'request-set-title';
+          title.textContent = `${copy.label} の希望`;
+          section.appendChild(title);
+        }
+
+        for (let i = 1; i <= 5; i++) {
+          const wrap = document.createElement('div');
+          const selectId = `req-${copy.copyIndex}-${i}`;
+          wrap.innerHTML = `<label for="${selectId}">第${i}希望</label><select id="${selectId}" class="request-select" data-copy-index="${copy.copyIndex}" data-rank="${i}"><option value="">-- 希望なし --</option></select>`;
+          section.appendChild(wrap);
+          const sel = wrap.querySelector('select');
+          (round.slots || []).forEach(slot => sel.appendChild(new Option(slot, slot)));
+          const reqs = currentRequestSets[copy.copyIndex] || [];
+          if (reqs[i-1]) sel.value = reqs[i-1];
+        }
+
+        container.appendChild(section);
+      });
       
       window.renderSlotStatsTable();
       window.refreshRequestOptionHints();
@@ -1446,9 +1592,7 @@
 
   window.refreshRequestOptionHints = function() {
     const round = getActiveRound();
-    for (let i = 1; i <= 5; i++) {
-      const select = document.getElementById(`req${i}`);
-      if (!select) continue;
+    document.querySelectorAll('#requestSelectors .request-select').forEach(select => {
       const current = select.value;
       select.innerHTML = '<option value="">-- 希望なし --</option>';
       (round.slots || []).forEach(slot => {
@@ -1458,14 +1602,13 @@
         if (slot === current) option.selected = true;
         select.appendChild(option);
       });
-    }
+    });
   }
 
   window.clearAllRequests = function() {
-    for (let i = 1; i <= 5; i++) {
-      const select = document.getElementById(`req${i}`);
-      if (select) select.value = '';
-    }
+    document.querySelectorAll('#requestSelectors .request-select').forEach(select => {
+      select.value = '';
+    });
   }
 
   window.submitRequest = async function() {
@@ -1482,20 +1625,26 @@
     btn.disabled = true;
     btn.textContent = "送信中...";
 
-    const reqs = [];
-    for (let i = 1; i <= 5; i++) {
-      const val = document.getElementById(`req${i}`).value;
-      if (val) {
-        if (reqs.includes(val)) {
-          alert("希望枠に重複があります。別々の枠を選んでください。");
-          btn.disabled = false; btn.textContent = "提出する";
-          return;
+    const requestCopies = getRequestCopiesForRoom(round, currentStudentRoom);
+    const requestSets = [];
+    for (const copy of requestCopies) {
+      const reqs = [];
+      for (let i = 1; i <= 5; i++) {
+        const val = document.getElementById(`req-${copy.copyIndex}-${i}`)?.value || '';
+        if (val) {
+          if (reqs.includes(val)) {
+            alert(`${copy.label} の希望枠に重複があります。別々の枠を選んでください。`);
+            btn.disabled = false; btn.textContent = "提出する";
+            return;
+          }
+          reqs.push(val);
         }
-        reqs.push(val);
       }
+      requestSets[copy.copyIndex] = reqs;
     }
-    if (!round.participants[currentStudentRoom]) round.participants[currentStudentRoom] = { isParticipating: true, requests: [] };
-    round.participants[currentStudentRoom].requests = reqs;
+    if (!round.participants[currentStudentRoom]) round.participants[currentStudentRoom] = { isParticipating: true, requests: [], requestSets: [] };
+    round.participants[currentStudentRoom].requestSets = requestSets;
+    round.participants[currentStudentRoom].requests = requestSets[0] || [];
 
     await saveData();
 
@@ -1654,19 +1803,22 @@
     roomTbody.innerHTML = '';
     (round.rooms || []).forEach(r => {
       const p = round.participants[r] || { isParticipating: true, requests: [] };
-      const reqs = p.requests || [];
-      roomTbody.innerHTML += `<tr><td>${r}</td><td>${p.isParticipating ? 'ON' : 'OFF'}</td><td>${reqs[0] || '-'}</td><td>${reqs[1] || '-'}</td><td>${reqs[2] || '-'}</td><td>${reqs[3] || '-'}</td><td>${reqs[4] || '-'}</td></tr>`;
+      const displayCopies = p.isParticipating ? getRequestCopiesForRoom(round, r) : [{ room: r, copyIndex: 0, copyCount: 1, label: r }];
+      displayCopies.forEach(copy => {
+        const reqs = getSubmittedRequestsForCopy(copy, round);
+        roomTbody.innerHTML += `<tr><td>${copy.label}</td><td>${p.isParticipating ? 'ON' : 'OFF'}</td><td>${reqs[0] || '-'}</td><td>${reqs[1] || '-'}</td><td>${reqs[2] || '-'}</td><td>${reqs[3] || '-'}</td><td>${reqs[4] || '-'}</td></tr>`;
+      });
     });
 
     const slotTbody = document.querySelector('#adminSlotRequestsTable tbody');
     slotTbody.innerHTML = '';
     (round.slots || []).forEach(slot => {
       let reqRooms = [[], [], [], [], []];
-      (round.rooms || []).forEach(r => {
-        const p = round.participants[r];
-        if (p && p.isParticipating && p.requests) {
-          const idx = p.requests.indexOf(slot);
-          if (idx !== -1 && idx < 5) reqRooms[idx].push(r);
+      getRequestCopiesForRound(round).forEach(copy => {
+        const p = round.participants[copy.room];
+        if (p && p.isParticipating) {
+          const idx = getSubmittedRequestsForCopy(copy, round).indexOf(slot);
+          if (idx !== -1 && idx < 5) reqRooms[idx].push(copy.label);
         }
       });
       slotTbody.innerHTML += `<tr><td>${slot}</td><td>${reqRooms[0].join(', ') || '-'}</td><td>${reqRooms[1].join(', ') || '-'}</td><td>${reqRooms[2].join(', ') || '-'}</td><td>${reqRooms[3].join(', ') || '-'}</td><td>${reqRooms[4].join(', ') || '-'}</td></tr>`;
@@ -1756,9 +1908,11 @@
 window.toggleParticipant = async function(room, val) {
   const round = getActiveRound();
   if (!round.participants) round.participants = {};
-  if (!round.participants[room]) round.participants[room] = { isParticipating: true, requests: [] };
+  if (!round.participants[room]) round.participants[room] = { isParticipating: true, requests: [], requestSets: [] };
   round.participants[room].isParticipating = !!val;
-  if (!Array.isArray(round.participants[room].requests)) round.participants[room].requests = [];
+  const requestSets = getRequestSetsForParticipant(round.participants[room]);
+  round.participants[room].requestSets = requestSets;
+  round.participants[room].requests = requestSets[0] || [];
   await saveData();
   window.updateAdminSummary();
   window.filterParticipantRows();
@@ -1768,9 +1922,11 @@ window.setAllParticipants = async function(val) {
   const round = getActiveRound();
   if (!round.participants) round.participants = {};
   (round.rooms || []).forEach(r => {
-    if (!round.participants[r]) round.participants[r] = { isParticipating: true, requests: [] };
+    if (!round.participants[r]) round.participants[r] = { isParticipating: true, requests: [], requestSets: [] };
     round.participants[r].isParticipating = !!val;
-    if (!Array.isArray(round.participants[r].requests)) round.participants[r].requests = [];
+    const requestSets = getRequestSetsForParticipant(round.participants[r]);
+    round.participants[r].requestSets = requestSets;
+    round.participants[r].requests = requestSets[0] || [];
   });
   await saveData();
   window.loadAdminData();
@@ -1792,10 +1948,17 @@ window.setAllParticipants = async function(val) {
     const round = getActiveRound();
     const tbody = document.querySelector('#resultTableAdmin tbody');
     const draftAssignments = getDraftAssignments(round);
+    const assignmentOptions = getManualAssignmentOptions(round);
     tbody.innerHTML = '';
     (round.slots || []).forEach(slot => {
+      const currentAssigned = draftAssignments[slot] || '';
       let selectHTML = `<select onchange="updateAdminAssignment('${slot}', this.value)"><option value="">-- 未定 --</option>`;
-      (round.rooms || []).forEach(r => { selectHTML += `<option value="${r}" ${draftAssignments[slot] === r ? 'selected' : ''}>${r}</option>`; });
+      assignmentOptions.forEach(copy => {
+        selectHTML += `<option value="${copy.label}" ${currentAssigned === copy.label ? 'selected' : ''}>${copy.label}</option>`;
+      });
+      if (currentAssigned && !assignmentOptions.some(copy => copy.label === currentAssigned)) {
+        selectHTML += `<option value="${currentAssigned}" selected>${currentAssigned}</option>`;
+      }
       tbody.innerHTML += `<tr><td>${slot}</td><td>${selectHTML}</select></td></tr>`;
     });
   }
@@ -1845,9 +2008,10 @@ window.setAllParticipants = async function(val) {
   window.getPreferenceRankLabel = function(room, slot) {
     const round = getActiveRound();
     if (!room) return "-";
-    const p = round.participants?.[room];
-    if (!p || !Array.isArray(p.requests) || p.requests.length === 0) return "未提出";
-    const idx = p.requests.indexOf(slot);
+    const parsed = parseRoomCopyLabel(room);
+    const reqs = getSubmittedRequestsForCopy({ room: parsed.room, copyIndex: parsed.copyIndex }, round);
+    if (!reqs.length) return "未提出";
+    const idx = reqs.indexOf(slot);
     if (idx === -1) return "希望外";
     return `第${idx + 1}希望`;
   }
@@ -1895,17 +2059,23 @@ window.setAllParticipants = async function(val) {
   const FORBIDDEN_ASSIGNMENT_COST = 1000000;
 
   function getSubmittedRequestsFor(room, round) {
-    const p = round.participants?.[room];
-    if (!p || !Array.isArray(p.requests)) return [];
-    return p.requests.filter(Boolean);
+    return getSubmittedRequestsForCopy({ room, copyIndex: 0 }, round);
   }
 
   function hasSubmittedRequests(room, round) {
-    return getSubmittedRequestsFor(room, round).length > 0;
+    return getRequestCopiesForRoom(round, room).every(copy => hasSubmittedRequestsForCopy(copy, round));
   }
 
   function prefWeightFor(room, slot, round) {
-    const reqs = getSubmittedRequestsFor(room, round);
+    const parsed = parseRoomCopyLabel(room);
+    const reqs = getSubmittedRequestsForCopy({ room: parsed.room, copyIndex: parsed.copyIndex }, round);
+    const idx = reqs.indexOf(slot);
+    if (idx === -1) return null;
+    return PREFERENCE_WEIGHTS[idx] ?? 0;
+  }
+
+  function prefWeightForCopy(copy, slot, round) {
+    const reqs = getSubmittedRequestsForCopy(copy, round);
     const idx = reqs.indexOf(slot);
     if (idx === -1) return null;
     return PREFERENCE_WEIGHTS[idx] ?? 0;
@@ -1949,7 +2119,7 @@ window.setAllParticipants = async function(val) {
 
     const slotIndexByName = new Map(slots.map((slot, idx) => [slot, idx]));
     const edges = roomCopies.map(copy => (
-      getSubmittedRequestsFor(copy.room, round)
+      getSubmittedRequestsForCopy(copy, round)
         .map(slot => slotIndexByName.get(slot))
         .filter(idx => idx !== undefined)
     ));
@@ -1994,8 +2164,8 @@ window.setAllParticipants = async function(val) {
         }
 
         const slot = slots[si];
-        const room = roomCopies[cj].room;
-        const weight = prefWeightFor(room, slot, round);
+        const copy = roomCopies[cj];
+        const weight = prefWeightForCopy(copy, slot, round);
 
         if (weight !== null) {
           cost[si][cj] = -weight;
@@ -2025,10 +2195,10 @@ window.setAllParticipants = async function(val) {
       if (cj < 0 || cj >= roomCopies.length) continue;
 
       const slot = slots[si];
-      const room = roomCopies[cj].room;
-      if (prefWeightFor(room, slot, round) === null) outsideCount += 1;
+      const copy = roomCopies[cj];
+      if (prefWeightForCopy(copy, slot, round) === null) outsideCount += 1;
 
-      assignments.push({ slot, room, slotIndex: si });
+      assignments.push({ slot, room: copy.label || copy.room, slotIndex: si });
       usedSlotIndexes.add(si);
     }
 
@@ -2042,7 +2212,8 @@ window.setAllParticipants = async function(val) {
     const assignments = [];
 
     for (let i = 0; i < count; i++) {
-      assignments.push({ slot: shuffledSlots[i], room: shuffledCopies[i].room });
+      const copy = shuffledCopies[i];
+      assignments.push({ slot: shuffledSlots[i], room: copy.label || copy.room });
     }
 
     return assignments;
@@ -2129,9 +2300,9 @@ window.setAllParticipants = async function(val) {
       ptr = (round.startPointer || 0) % P;
     }
 
-    const roomCopies = buildRoomCopies(activeRooms, slots.length, ptr);
-    const submittedCopies = roomCopies.filter(copy => hasSubmittedRequests(copy.room, round));
-    const unsubmittedCopies = roomCopies.filter(copy => !hasSubmittedRequests(copy.room, round));
+    const roomCopies = getAssignmentCopiesForRound(round);
+    const submittedCopies = roomCopies.filter(copy => hasSubmittedRequestsForCopy(copy, round));
+    const unsubmittedCopies = roomCopies.filter(copy => !hasSubmittedRequestsForCopy(copy, round));
     const canKeepSubmittedWithinRequests = canAssignSubmittedOnlyToRequestedSlots(slots, submittedCopies, round);
     const submittedResult = assignSubmittedCopies(
       slots,
@@ -2216,7 +2387,8 @@ window.setAllParticipants = async function(val) {
       const currentParticipant = sourceRound.participants?.[room];
       participants[room] = {
         isParticipating: currentParticipant?.isParticipating ?? true,
-        requests: []
+        requests: [],
+        requestSets: []
       };
     });
     return participants;
@@ -2349,10 +2521,11 @@ window.setAllParticipants = async function(val) {
         // 履歴は、その回のparticipantsから判定
         let rankLabel = "-";
         if (room) {
-          const p = r.participants?.[room];
-          if (!p || !Array.isArray(p.requests) || p.requests.length === 0) rankLabel = "未提出";
+          const parsed = parseRoomCopyLabel(room);
+          const reqs = getSubmittedRequestsForCopy({ room: parsed.room, copyIndex: parsed.copyIndex }, r);
+          if (!reqs.length) rankLabel = "未提出";
           else {
-            const idx = p.requests.indexOf(slot);
+            const idx = reqs.indexOf(slot);
             rankLabel = idx === -1 ? "希望外" : `第${idx + 1}希望`;
           }
         }
