@@ -962,9 +962,6 @@
 
   // アプリ起動時のデータ読み込み
   window.onload = async () => {
-    const refreshed = await checkForAppUpdate({ forceReloadIfFound: true, reason: "startup" });
-    if (refreshed) return;
-
     try {
       const docSnap = await getDoc(dbRef);
       if (!docSnap.exists()) {
