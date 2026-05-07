@@ -1003,24 +1003,24 @@
           const isAdminMode = document.getElementById('adminToggle').checked;
           if (isAdminMode) {
             window.updateAdminSummary();
-            if (document.getElementById('tab-requests').classList.contains('active')) renderAdminRequests();
-            if (document.getElementById('tab-participants').classList.contains('active')) loadAdminData(); // 簡易更新
+            if (document.getElementById('tab-requests').classList.contains('active')) window.renderAdminRequests();
+            if (document.getElementById('tab-participants').classList.contains('active')) window.loadAdminData(); // 簡易更新
             if (document.getElementById('tab-lottery').classList.contains('active')) {
-              renderAdminResultTable();
-              renderAdminRankTable();
-              renderPublishStatus();
+              window.renderAdminResultTable();
+              window.renderAdminRankTable();
+              window.renderPublishStatus();
             }
             if (document.getElementById('tab-cancel-lottery').classList.contains('active')) {
-              renderLotteryCancelPanel();
+              window.renderLotteryCancelPanel();
             }
           } else {
             if (document.getElementById('step1').classList.contains('active')) {
-              renderStudentView();
+              window.renderStudentView();
             } else if (document.getElementById('step2').classList.contains('active')) {
               if (window.isDeadlinePassed() || window.isResultFinalized()) {
                 window.goToStep2();
               } else {
-                renderSlotStatsTable(); // 混み具合をリアルタイム更新
+                window.renderSlotStatsTable(); // 混み具合をリアルタイム更新
                 window.refreshRequestOptionHints();
               }
             }
@@ -1029,10 +1029,12 @@
       });
 
       document.getElementById('loadingOverlay').style.display = 'none';
-      renderStudentView();
+      window.renderStudentView();
       scheduleAutoLotteryTimer();
       void maybeAutoRunLottery("initial-load");
     } catch (error) {
+      const overlay = document.getElementById('loadingOverlay');
+      if (overlay) overlay.textContent = "読み込みに失敗しました。ページを再読み込みしてください。";
       alert("データベースの接続に失敗しました。ページをリロードしてください。\n" + error);
     }
   };
