@@ -304,12 +304,32 @@
 <div id="loadingOverlay">データベースに接続中...</div>
 <script>
   window.__dormitoryAppLoaded = false;
-  window.__dormitoryLoadingWatchdog = window.setTimeout(function() {
-    if (window.__dormitoryAppLoaded) return;
+  window.__dormitoryScriptStarted = false;
+  window.__showDormitoryLoadError = function(message, detail) {
+    window.__dormitoryAppLoaded = true;
+    if (window.__dormitoryLoadingWatchdog) window.clearTimeout(window.__dormitoryLoadingWatchdog);
     var overlay = document.getElementById('loadingOverlay');
     if (!overlay) return;
-    overlay.innerHTML = '読み込みに時間がかかっています。<br><button onclick="location.reload()" style="margin-top:0.8rem;">再読み込み</button>';
+    overlay.innerHTML = message + (detail ? '<br><span style="font-size:0.9rem; color:#5b6775;">' + detail + '</span>' : '') + '<br><button onclick="location.reload()" style="margin-top:0.8rem;">再読み込み</button>';
+  };
+  window.__dormitoryLoadingWatchdog = window.setTimeout(function() {
+    if (window.__dormitoryAppLoaded) return;
+    var message = window.__dormitoryScriptStarted
+      ? 'データベースの応答に時間がかかっています。'
+      : 'アプリ本体またはFirebaseライブラリの読み込みに時間がかかっています。';
+    window.__showDormitoryLoadError(message, '通信環境を確認して再読み込みしてください。');
   }, 12000);
+  window.addEventListener('error', function(event) {
+    if (window.__dormitoryAppLoaded) return;
+    var target = event.target || {};
+    var detail = target.src ? target.src : (event.message || '');
+    window.__showDormitoryLoadError('読み込み中にエラーが発生しました。', detail);
+  }, true);
+  window.addEventListener('unhandledrejection', function(event) {
+    if (window.__dormitoryAppLoaded) return;
+    var reason = event.reason;
+    window.__showDormitoryLoadError('読み込み中にエラーが発生しました。', reason && reason.message ? reason.message : String(reason || ''));
+  });
 </script>
 
 <header>
@@ -623,9 +643,14 @@
   </div>
 </div>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js" onerror="window.__showDormitoryLoadError('Firebaseの読み込みに失敗しました。', this.src)"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js" onerror="window.__showDormitoryLoadError('Firestoreの読み込みに失敗しました。', this.src)"></script>
+<script>
+  window.__dormitoryScriptStarted = true;
+  if (!window.firebase || !firebase.firestore) {
+    window.__showDormitoryLoadError('Firebaseライブラリを読み込めませんでした。', '通信環境を確認して再読み込みしてください。');
+    throw new Error('Firebase library failed to load');
+  }
 
   // 提供されたFirebase設定
   const firebaseConfig = {
@@ -637,9 +662,9 @@
     appId: "1:451503282681:web:b6bee0fcb9eaa1c2054528"
   };
 
-  const app = initializeApp(firebaseConfig);
-  const firestore = getFirestore(app);
-  const dbRef = doc(firestore, "settings", "mainData"); // データを保存する場所
+  const app = firebase.initializeApp(firebaseConfig);
+  const firestore = firebase.firestore();
+  const dbRef = firestore.collection("settings").doc("mainData"); // データを保存する場所
 
   const initialRooms = ["113","201","206","207","210","216","218","219","220","221","224","225","226","227","228","230","302","303","304","305","308","314","316","318","322","325","326","327","328","329","330","401","402","408","412","418","420","421","423","425","426","428","429","430","501","504","505","508","510","513","514","515","516","519","520","521","522","523","524","525","526","527"];
   const initialSlots = ["2025年6月23日(月)","2025年6月24日(火)","2025年6月25日(水)","2025年6月26日(木)","2025年6月27日(金)","2025年6月29日(日)朝","2025年6月29日(日)昼","2025年6月29日(日)夜","2025年6月30日(月)","2025年7月1日(火)","2025年7月2日(水)","2025年7月3日(木)","2025年7月4日(金)","2025年7月6日(日)朝","2025年7月6日(日)昼","2025年7月6日(日)夜","2025年7月7日(月)"];
@@ -981,8 +1006,8 @@
   // アプリ起動時のデータ読み込み
   async function bootApp() {
     try {
-      const docSnap = await withTimeout(getDoc(dbRef), 10000, "データベースの応答がタイムアウトしました。通信環境を確認して再読み込みしてください。");
-      if (!docSnap.exists()) {
+      const docSnap = await withTimeout(dbRef.get(), 10000, "データベースの応答がタイムアウトしました。通信環境を確認して再読み込みしてください。");
+      if (!docSnap.exists) {
         // 初回起動：v2形式で「今回」roundを作成
         const rid = makeRoundId();
         const round = {
@@ -1000,7 +1025,7 @@
         round.rooms.forEach(r => round.participants[r] = { isParticipating: true, requests: [], requestSets: [] });
 
         db = { adminPassword: "admin", currentRoundId: rid, rounds: { [rid]: round }, historyOrder: [rid] };
-        await setDoc(dbRef, db);
+        await dbRef.set(db);
       } else {
         db = docSnap.data();
       }
@@ -1009,8 +1034,8 @@
       migrateIfNeeded();
 
       // リアルタイムリスナーの登録（データが更新されるたびに呼ばれる）
-      onSnapshot(dbRef, (snapshot) => {
-        if (snapshot.exists()) {
+      dbRef.onSnapshot((snapshot) => {
+        if (snapshot.exists) {
           db = snapshot.data();
           // 旧→新の移行と正規化（UI側）
           migrateIfNeeded();
@@ -1074,7 +1099,7 @@
   // Firebaseへの保存関数
   async function saveData() {
     try {
-      await setDoc(dbRef, db);
+      await dbRef.set(db);
     } catch(e) {
       alert("データの保存に失敗しました: " + e.message);
     }
