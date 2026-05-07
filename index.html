@@ -1123,8 +1123,10 @@
     try {
       normalizeDatabaseForSave();
       await dbRef.set(db);
+      return true;
     } catch(e) {
       alert("データの保存に失敗しました: " + e.message);
+      return false;
     }
   }
 
@@ -1725,7 +1727,10 @@
     round.participants[currentStudentRoom].requestSets = serializeRequestSetsForFirestore(requestSets);
     round.participants[currentStudentRoom].requests = requestSets[0] || [];
 
-    await saveData();
+    if (!(await saveData())) {
+      btn.disabled = false; btn.textContent = "提出する";
+      return;
+    }
 
     alert("希望を提出しました！");
     btn.disabled = false; btn.textContent = "提出する";
@@ -1764,7 +1769,7 @@
     
     if (confirm("パスワードを変更しますか？")) {
       db.adminPassword = newPass;
-      await saveData();
+      if (!(await saveData())) return;
       alert("管理者パスワードを変更しました。");
       document.getElementById('currentAdminPassword').value = '';
       document.getElementById('newAdminPassword').value = '';
@@ -1803,7 +1808,7 @@
     });
     roundSelect.onchange = async () => {
       db.currentRoundId = roundSelect.value;
-      await saveData();
+      if (!(await saveData())) return;
       window.loadAdminData();
     };
 
@@ -1937,7 +1942,7 @@
     }
   }
 
-  window.saveAdminSettings = function() {
+  window.saveAdminSettings = async function() {
     const round = getActiveRound();
     const prevDeadline = round.deadline || "";
     round.deadline = document.getElementById('adminDeadline').value;
@@ -1965,7 +1970,7 @@
     const idxEl = document.getElementById('adminPointerIndexDisplay');
     if (idxEl) idxEl.textContent = (idxOnActive >= 0) ? String(idxOnActive) : '-';
 
-    saveData();
+    if (!(await saveData())) return;
     window.updateAdminSummary();
     scheduleAutoLotteryTimer();
     void maybeAutoRunLottery("deadline-updated");
@@ -1979,7 +1984,7 @@
     // 新しい部屋が追加された場合の初期化
     normalizeParticipants(round);
 
-    await saveData();
+    if (!(await saveData())) return;
     window.loadAdminData();
     alert("更新しました。");
   }
@@ -1992,7 +1997,7 @@ window.toggleParticipant = async function(room, val) {
   const requestSets = getRequestSetsForParticipant(round.participants[room]);
   round.participants[room].requestSets = serializeRequestSetsForFirestore(requestSets);
   round.participants[room].requests = requestSets[0] || [];
-  await saveData();
+  if (!(await saveData())) return;
   window.updateAdminSummary();
   window.filterParticipantRows();
 }
@@ -2007,16 +2012,16 @@ window.setAllParticipants = async function(val) {
     round.participants[r].requestSets = serializeRequestSetsForFirestore(requestSets);
     round.participants[r].requests = requestSets[0] || [];
   });
-  await saveData();
+  if (!(await saveData())) return;
   window.loadAdminData();
 }
 
   // 手動修正をクラウドに保存する関数
-  window.updateAdminAssignment = function(slot, val) {
+  window.updateAdminAssignment = async function(slot, val) {
     const round = getActiveRound();
     const draftAssignments = getDraftAssignments(round);
     draftAssignments[slot] = val;
-    saveData();
+    if (!(await saveData())) return;
     window.renderAdminRankTable();
     window.renderLotteryCancelPanel();
     window.renderPublishStatus();
@@ -2073,7 +2078,7 @@ window.setAllParticipants = async function(val) {
     if (!confirm(`管理者確認用の割当 ${assignedCount} 件を取り消します。よろしいですか？`)) return;
 
     round.draftAssignments = cloneAssignmentsForSlots(round, {});
-    await saveData();
+    if (!(await saveData())) return;
 
     window.renderAdminResultTable();
     window.renderAdminRankTable();
@@ -2121,7 +2126,7 @@ window.setAllParticipants = async function(val) {
 
     round.assignments = cloneAssignmentsForSlots(round, draftAssignments);
     round.publishedAt = nowISO();
-    await saveData();
+    if (!(await saveData())) return;
 
     window.renderPublishStatus();
     window.updateAdminSummary();
@@ -2415,7 +2420,7 @@ window.setAllParticipants = async function(val) {
     const idxEl = document.getElementById('adminPointerIndexDisplay');
     if (idxEl) idxEl.textContent = String(ptr);
 
-    await saveData();
+    if (!(await saveData())) return false;
     window.renderAdminResultTable();
     window.renderAdminRankTable();
     window.renderLotteryCancelPanel();
@@ -2456,7 +2461,7 @@ window.setAllParticipants = async function(val) {
   window.saveRoundName = async function() {
     const round = getActiveRound();
     round.name = document.getElementById('roundName').value || '';
-    await saveData();
+    if (!(await saveData())) return;
     window.loadAdminData();
   }
 
@@ -2510,7 +2515,7 @@ window.setAllParticipants = async function(val) {
       db.currentRoundId = (db.historyOrder || []).find(id => db.rounds?.[id]) || Object.keys(db.rounds || {}).find(id => db.rounds?.[id]) || "";
     }
 
-    await saveData();
+    if (!(await saveData())) return;
     window.loadAdminData();
     window.renderHistoryPanel();
     alert("回を削除しました。");
@@ -2559,7 +2564,7 @@ window.setAllParticipants = async function(val) {
     if (!db.historyOrder) db.historyOrder = [];
     db.historyOrder.unshift(newId);
 
-    await saveData();
+    if (!(await saveData())) return;
     if (nextRoundNameInput) nextRoundNameInput.value = '';
     alert(`「${nextRoundName}」を作成しました。『名簿・枠』で部屋番号/候補枠を変更してから、抽選を実行してください。`);
     window.loadAdminData();
