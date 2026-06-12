@@ -233,8 +233,29 @@
     .admin-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.2rem; }
     .admin-tab { padding: 0.45rem 0.85rem; cursor: pointer; background: none; color: var(--text-muted); border: 1px solid transparent; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; font-size: 0.9rem; }
     .admin-tab.active { color: var(--primary); border-color: #c9dcfb; border-bottom-color: var(--primary); background: #f5f9ff; font-weight: 700; }
-    .admin-panel { display: none; }
+    .admin-panel { display: none; position: relative; }
+    .admin-panel > h2 { padding-right: 3rem; }
     .admin-panel.active { display: block; }
+    .panel-help-button {
+      position: absolute;
+      top: -0.1rem;
+      right: 0;
+      width: 2.15rem;
+      height: 2.15rem;
+      padding: 0;
+      border-radius: 999px;
+      background: #fff;
+      color: var(--primary);
+      border: 1px solid #bcd4fb;
+      box-shadow: 0 6px 14px rgba(11, 109, 242, 0.12);
+      font-size: 1.05rem;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .panel-help-button:hover {
+      background: #eef5ff;
+      color: var(--primary-hover);
+    }
     .password-box { background-color: #f9fbff; padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.2rem; }
     .password-box input { margin-bottom: 0.5rem; }
     .guide-hero {
@@ -303,6 +324,91 @@
     }
     .guide-card li {
       margin-bottom: 0.35rem;
+    }
+    .guide-visual-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 0.9rem;
+      margin: 1rem 0;
+    }
+    .guide-visual-card {
+      border: 1px solid #dce7f7;
+      border-radius: 14px;
+      background: #fbfdff;
+      padding: 0.75rem;
+    }
+    .guide-visual-card h3 {
+      margin: 0 0 0.55rem;
+      color: #1f3f68;
+    }
+    .guide-visual {
+      width: 100%;
+      display: block;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid #e5edf7;
+    }
+    .help-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      z-index: 10000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .help-modal.active {
+      display: flex;
+    }
+    .help-modal-card {
+      width: min(760px, 100%);
+      max-height: 86vh;
+      overflow: auto;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28);
+      padding: 1rem;
+      border: 1px solid #dce7f7;
+    }
+    .help-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.6rem;
+    }
+    .help-modal-header h2 {
+      margin: 0;
+      border: none;
+      padding: 0;
+    }
+    .help-close-button {
+      width: 2.1rem;
+      height: 2.1rem;
+      border-radius: 999px;
+      padding: 0;
+      background: #eef4ff;
+      color: #1f4f94;
+      border: 1px solid #cadcfb;
+      flex: 0 0 auto;
+    }
+    .help-body ul {
+      padding-left: 1.1rem;
+      margin: 0.75rem 0;
+    }
+    .help-body li {
+      margin-bottom: 0.35rem;
+    }
+    .help-mini-visual {
+      width: 100%;
+      display: block;
+      margin: 0.55rem 0 0.8rem;
+      border: 1px solid #e5edf7;
+      border-radius: 12px;
+      background: #fff;
     }
     .guide-note {
       border-left: 4px solid var(--warn);
@@ -542,6 +648,7 @@
     </div>
 
     <div id="tab-settings" class="admin-panel active">
+      <button type="button" class="panel-help-button" onclick="showAdminHelp('settings')" aria-label="設定のヘルプ">?</button>
       <h2>基本設定</h2>
 
       <h3 style="margin-top:0;">回（今回/次回）の管理</h3>
@@ -578,6 +685,7 @@
     </div>
 
     <div id="tab-participants" class="admin-panel">
+      <button type="button" class="panel-help-button" onclick="showAdminHelp('participants')" aria-label="参加フラグのヘルプ">?</button>
       <h2>今回参加フラグの設定</h2>
       <div class="participant-controls">
         <input type="text" id="adminParticipantFilter" placeholder="部屋番号を絞り込み（例: 3）" oninput="filterParticipantRows()">
@@ -591,6 +699,7 @@
     </div>
 
     <div id="tab-data" class="admin-panel">
+      <button type="button" class="panel-help-button" onclick="showAdminHelp('data')" aria-label="名簿・枠のヘルプ">?</button>
       <h2>部屋番号一覧の編集</h2>
       <textarea id="adminRooms" oninput="scheduleListsAutoSave()"></textarea>
       <h2>候補日（候補枠）一覧の編集</h2>
@@ -614,6 +723,7 @@
     </div>
 
     <div id="tab-requests" class="admin-panel">
+      <button type="button" class="panel-help-button" onclick="showAdminHelp('requests')" aria-label="希望状況のヘルプ">?</button>
       <h2>現在の希望状況確認 (リアルタイム)</h2>
       <div class="status-box" style="margin-bottom: 1rem;">
         <div style="display:flex; flex-wrap:wrap; justify-content:space-between; gap:0.6rem; align-items:center; margin-bottom:0.55rem;">
@@ -642,6 +752,7 @@
     </div>
 
     <div id="tab-lottery" class="admin-panel">
+      <button type="button" class="panel-help-button" onclick="showAdminHelp('lottery')" aria-label="抽選・結果のヘルプ">?</button>
       <h2>抽選の実行</h2>
       <div class="action-row" style="margin-top: 0; margin-bottom: 1rem;">
         <button onclick="runLottery()">抽選を実行する</button>
@@ -674,6 +785,7 @@
     </div>
 
     <div id="tab-cancel-lottery" class="admin-panel">
+      <button type="button" class="panel-help-button" onclick="showAdminHelp('cancel')" aria-label="抽選取り消しのヘルプ">?</button>
       <h2>抽選取り消し</h2>
       <div class="danger-panel">
         <p style="font-size: 0.9rem; margin-bottom: 0.6rem;">
@@ -691,6 +803,7 @@
     </div>
 
     <div id="tab-history" class="admin-panel">
+      <button type="button" class="panel-help-button" onclick="showAdminHelp('history')" aria-label="履歴のヘルプ">?</button>
       <h2>過去の回（履歴）</h2>
       <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1rem;">
         ここでは保存済みの回の結果を閲覧できます。不要な回は削除できます。
@@ -719,6 +832,7 @@
     </div>
 
     <div id="tab-guide" class="admin-panel">
+      <button type="button" class="panel-help-button" onclick="showAdminHelp('guide')" aria-label="使い方のヘルプ">?</button>
       <h2>管理者側の使い方</h2>
       <div class="guide-hero">
         <div class="guide-hero-title">基本の流れ</div>
@@ -732,6 +846,104 @@
           <span class="guide-chip">希望状況</span>
           <span class="guide-chip">抽選・結果</span>
           <span class="guide-chip">履歴</span>
+        </div>
+      </div>
+
+      <div class="guide-visual-grid">
+        <div class="guide-visual-card">
+          <h3>1. まず数を合わせる</h3>
+          <svg class="guide-visual" viewBox="0 0 560 330" role="img" aria-label="集計カードと設定画面の説明図">
+            <rect x="0" y="0" width="560" height="330" fill="#fbfdff"/>
+            <rect x="24" y="28" width="512" height="76" rx="14" fill="#eef5ff" stroke="#cadcfb"/>
+            <rect x="46" y="48" width="96" height="36" rx="8" fill="#fff"/>
+            <rect x="154" y="48" width="96" height="36" rx="8" fill="#fff"/>
+            <rect x="262" y="48" width="96" height="36" rx="8" fill="#fff"/>
+            <rect x="370" y="48" width="96" height="36" rx="8" fill="#fff"/>
+            <text x="62" y="71" fill="#1f4f94" font-size="14" font-weight="800">候補枠数</text>
+            <text x="170" y="71" fill="#1f4f94" font-size="14" font-weight="800">参加部屋数</text>
+            <text x="278" y="71" fill="#1f4f94" font-size="14" font-weight="800">提出済み</text>
+            <text x="386" y="71" fill="#1f4f94" font-size="14" font-weight="800">締切状態</text>
+            <rect x="38" y="40" width="330" height="52" rx="10" fill="none" stroke="#e03131" stroke-width="4"/>
+            <text x="405" y="123" fill="#e03131" font-size="16" font-weight="900">ここを一致させる</text>
+            <path d="M385 116 C320 104 268 92 214 84" fill="none" stroke="#e03131" stroke-width="3" marker-end="url(#arrowRed1)"/>
+            <defs>
+              <marker id="arrowRed1" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path d="M0,0 L9,3 L0,6 Z" fill="#e03131"/>
+              </marker>
+            </defs>
+            <rect x="42" y="150" width="250" height="42" rx="8" fill="#fff" stroke="#d7dee8"/>
+            <text x="58" y="176" fill="#334155" font-size="15" font-weight="800">締切日時</text>
+            <text x="156" y="176" fill="#5b6775" font-size="14">開始日の4日前くらい</text>
+            <rect x="42" y="214" width="250" height="42" rx="8" fill="#fff" stroke="#d7dee8"/>
+            <text x="58" y="240" fill="#334155" font-size="15" font-weight="800">開始ポインタ</text>
+            <text x="172" y="240" fill="#5b6775" font-size="14">抽選の起点</text>
+            <path d="M313 171 L428 171" stroke="#0b6df2" stroke-width="3" marker-end="url(#arrowBlue1)"/>
+            <path d="M313 235 L428 235" stroke="#0b6df2" stroke-width="3" marker-end="url(#arrowBlue1)"/>
+            <defs>
+              <marker id="arrowBlue1" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path d="M0,0 L9,3 L0,6 Z" fill="#0b6df2"/>
+              </marker>
+            </defs>
+            <text x="438" y="176" fill="#0b6df2" font-size="15" font-weight="900">設定</text>
+            <text x="438" y="240" fill="#0b6df2" font-size="15" font-weight="900">誰から始めるか</text>
+          </svg>
+        </div>
+
+        <div class="guide-visual-card">
+          <h3>2. 未提出者を確認する</h3>
+          <svg class="guide-visual" viewBox="0 0 560 330" role="img" aria-label="希望状況画面の説明図">
+            <rect x="0" y="0" width="560" height="330" fill="#fbfdff"/>
+            <rect x="32" y="34" width="206" height="238" rx="12" fill="#fff" stroke="#d7dee8"/>
+            <text x="52" y="66" fill="#1f3f68" font-size="17" font-weight="900">未提出者</text>
+            <rect x="52" y="86" width="150" height="118" rx="8" fill="#f8fafc" stroke="#e0e8f4"/>
+            <text x="70" y="118" fill="#334155" font-size="20" font-weight="900">112</text>
+            <text x="70" y="154" fill="#334155" font-size="20" font-weight="900">113</text>
+            <text x="70" y="190" fill="#334155" font-size="20" font-weight="900">321</text>
+            <rect x="52" y="224" width="150" height="34" rx="17" fill="#eef5ff" stroke="#cadcfb"/>
+            <text x="79" y="246" fill="#1f4f94" font-size="14" font-weight="900">コピー</text>
+            <path d="M224 241 C288 248 314 234 352 201" fill="none" stroke="#0b6df2" stroke-width="3" marker-end="url(#arrowBlue2)"/>
+            <rect x="328" y="56" width="196" height="180" rx="12" fill="#fff" stroke="#d7dee8"/>
+            <text x="348" y="88" fill="#1f3f68" font-size="17" font-weight="900">部屋別の希望</text>
+            <line x1="348" y1="111" x2="504" y2="111" stroke="#e0e8f4" stroke-width="2"/>
+            <text x="348" y="140" fill="#334155" font-size="14">110① 第1〜第5</text>
+            <text x="348" y="171" fill="#334155" font-size="14">110② 第1〜第5</text>
+            <text x="348" y="202" fill="#334155" font-size="14">201 第1〜第5</text>
+            <defs>
+              <marker id="arrowBlue2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path d="M0,0 L9,3 L0,6 Z" fill="#0b6df2"/>
+              </marker>
+            </defs>
+            <text x="278" y="292" fill="#e03131" font-size="16" font-weight="900">連絡用にそのまま使える</text>
+          </svg>
+        </div>
+
+        <div class="guide-visual-card">
+          <h3>3. 抽選後は学生に反映</h3>
+          <svg class="guide-visual" viewBox="0 0 560 330" role="img" aria-label="抽選と学生反映の説明図">
+            <rect x="0" y="0" width="560" height="330" fill="#fbfdff"/>
+            <rect x="40" y="42" width="160" height="54" rx="12" fill="#0b6df2"/>
+            <text x="72" y="76" fill="#fff" font-size="17" font-weight="900">抽選を実行</text>
+            <path d="M213 69 L306 69" stroke="#0b6df2" stroke-width="4" marker-end="url(#arrowBlue3)"/>
+            <rect x="320" y="36" width="198" height="132" rx="12" fill="#fff" stroke="#d7dee8"/>
+            <text x="342" y="66" fill="#1f3f68" font-size="16" font-weight="900">管理者確認用</text>
+            <rect x="342" y="84" width="132" height="18" rx="4" fill="#eef3f8"/>
+            <rect x="342" y="112" width="132" height="18" rx="4" fill="#eef3f8"/>
+            <rect x="342" y="140" width="94" height="18" rx="4" fill="#eef3f8"/>
+            <text x="84" y="168" fill="#5b6775" font-size="15" font-weight="800">必要なら手動修正</text>
+            <path d="M404 179 L404 226" stroke="#f08c00" stroke-width="4" marker-end="url(#arrowOrange3)"/>
+            <rect x="282" y="238" width="244" height="56" rx="16" fill="#eef5ff" stroke="#cadcfb"/>
+            <text x="326" y="273" fill="#1f4f94" font-size="17" font-weight="900">学生に反映する</text>
+            <text x="36" y="266" fill="#e03131" font-size="17" font-weight="900">ここを押すまで</text>
+            <text x="36" y="291" fill="#e03131" font-size="17" font-weight="900">学生側には出ない</text>
+            <defs>
+              <marker id="arrowBlue3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path d="M0,0 L9,3 L0,6 Z" fill="#0b6df2"/>
+              </marker>
+              <marker id="arrowOrange3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path d="M0,0 L9,3 L0,6 Z" fill="#f08c00"/>
+              </marker>
+            </defs>
+          </svg>
         </div>
       </div>
 
@@ -800,6 +1012,16 @@
         注意：抽選後すぐに学生側へ出るわけではありません。内容を確認してから「学生に反映する」を押すと、学生側に結果が表示されます。
       </div>
     </div>
+  </div>
+</div>
+
+<div id="adminHelpModal" class="help-modal" onclick="closeAdminHelp(event)" aria-hidden="true">
+  <div class="help-modal-card" role="dialog" aria-modal="true" aria-labelledby="adminHelpTitle" onclick="event.stopPropagation()">
+    <div class="help-modal-header">
+      <h2 id="adminHelpTitle">ヘルプ</h2>
+      <button type="button" class="help-close-button" onclick="closeAdminHelp()" aria-label="ヘルプを閉じる">×</button>
+    </div>
+    <div id="adminHelpBody" class="help-body"></div>
   </div>
 </div>
 
@@ -1370,6 +1592,144 @@
     if (!listAutoSaveDirty && !listAutoSaveInProgress) return;
     event.preventDefault();
     event.returnValue = "";
+  });
+
+  const ADMIN_HELP_CONTENT = {
+    settings: {
+      title: "設定タブでやること",
+      visual: ["集計カード", "締切日時", "開始ポインタ", "次回作成"],
+      bullets: [
+        "候補枠数と参加部屋数が合っているか、上の集計カードで確認します。",
+        "締切日時は、希望提出を止める日時です。開始日の4日前くらいを目安にします。",
+        "開始ポインタは、抽選で誰を起点にするかの設定です。",
+        "次回を作るときは、先に「次に作る回の名前」を入力してから作成します。"
+      ],
+      caution: "回の削除は元に戻せません。不要な回か確認してから押してください。"
+    },
+    participants: {
+      title: "参加フラグタブでやること",
+      visual: ["部屋一覧", "ON/OFF", "全てON/OFF", "調整"],
+      bullets: [
+        "今回の抽選に入れる部屋はON、外す部屋はOFFにします。",
+        "委員会生・休学者・免除対象者などはOFFにします。",
+        "候補枠数と参加部屋数がずれると、誰かが2回当たることがあります。",
+        "候補枠が多い場合、2回当たる部屋は希望を2セット出せます。"
+      ],
+      caution: "参加フラグを変えると、未提出者数や抽選対象も変わります。抽選前にもう一度集計カードを確認してください。"
+    },
+    data: {
+      title: "名簿・枠タブでやること",
+      visual: ["部屋番号", "候補枠", "期間生成", "自動保存"],
+      bullets: [
+        "部屋番号は1行に1部屋ずつ入力します。",
+        "候補枠も1行に1枠ずつ入力します。",
+        "期間から生成を使うと、平日・土曜夜・日曜朝昼夜の候補枠をまとめて作れます。",
+        "このタブは自動保存です。「自動保存済み」と出れば保存されています。"
+      ],
+      caution: "入力してすぐ別タブへ移動した場合も、移動前に保存を試します。失敗したら移動せず警告します。"
+    },
+    requests: {
+      title: "希望状況タブでやること",
+      visual: ["未提出一覧", "コピー", "部屋別希望", "候補枠別希望"],
+      bullets: [
+        "未提出者の部屋番号一覧を確認できます。",
+        "「改行区切りでコピー」で、そのまま連絡用にコピーできます。",
+        "部屋別に第1〜第5希望を確認できます。",
+        "候補枠別に、どの部屋が第何希望にしているか確認できます。"
+      ],
+      caution: "110①・110②のような表示は、同じ部屋が2回当たる可能性があるときの区別です。"
+    },
+    lottery: {
+      title: "抽選・結果タブでやること",
+      visual: ["抽選実行", "確認", "手動修正", "学生に反映"],
+      bullets: [
+        "締切後に「抽選を実行する」を押します。",
+        "結果はまず管理者確認用として出ます。必要なら担当部屋を手動修正できます。",
+        "希望順位一覧で、第何希望になったかを確認できます。",
+        "学生側に見せるには、最後に必ず「学生に反映する」を押します。"
+      ],
+      caution: "抽選しただけでは学生側には表示されません。「学生に反映する」までがセットです。"
+    },
+    cancel: {
+      title: "抽選取り消しタブでやること",
+      visual: ["現在の担当", "確認", "取り消し", "未定に戻す"],
+      bullets: [
+        "管理者確認用の割当結果を一覧で確認できます。",
+        "取り消すと、管理者確認用の担当がすべて未定に戻ります。",
+        "学生に反映済みの結果は、この操作だけでは変わりません。",
+        "学生側を変えたい場合は、抽選・結果タブで再度反映します。"
+      ],
+      caution: "赤いボタンは影響が大きい操作です。押す前に対象を確認してください。"
+    },
+    history: {
+      title: "履歴タブでやること",
+      visual: ["回を選択", "結果確認", "CSV出力", "削除"],
+      bullets: [
+        "過去に作成した回の結果を確認できます。",
+        "表示する回を選ぶと、担当部屋と希望順位が表示されます。",
+        "CSV出力するとExcelなどで開けます。",
+        "不要な回は削除できます。ただし最後の1回は削除できません。"
+      ],
+      caution: "削除した回は戻せません。必要ならCSV出力してから削除してください。"
+    },
+    guide: {
+      title: "使い方タブの見方",
+      visual: ["流れ", "図解", "要点", "注意"],
+      bullets: [
+        "このタブは、管理者操作の全体像を見る場所です。",
+        "上の図解で、見る場所と押すボタンを先に確認できます。",
+        "下のカードで、各タブの役割を短く確認できます。",
+        "操作に迷ったら、各タブ右上の「?」を押してください。"
+      ],
+      caution: "説明をもっと実画面寄りにしたい場合は、追加したい場面を教えてくれれば増やせます。"
+    }
+  };
+
+  function buildAdminHelpVisual(labels) {
+    const items = labels || [];
+    const xPositions = [38, 166, 294, 422];
+    const color = ["#eef5ff", "#fff8e8", "#f1f8f4", "#fff1f1"];
+    const stroke = ["#cadcfb", "#f5d28c", "#b9dfc4", "#f4c2c2"];
+    const text = items.map((label, index) => {
+      const x = xPositions[index] || 38;
+      const fill = color[index] || "#eef5ff";
+      const border = stroke[index] || "#cadcfb";
+      return `<rect x="${x}" y="76" width="100" height="54" rx="12" fill="${fill}" stroke="${border}"></rect><text x="${x + 50}" y="108" fill="#1f3f68" font-size="14" font-weight="900" text-anchor="middle">${label}</text>`;
+    }).join("");
+    return `<svg class="help-mini-visual" viewBox="0 0 560 176" role="img" aria-label="ヘルプ図解">
+      <rect x="0" y="0" width="560" height="176" fill="#fbfdff"></rect>
+      <rect x="22" y="24" width="516" height="124" rx="16" fill="#fff" stroke="#dce7f7"></rect>
+      <text x="42" y="52" fill="#5b6775" font-size="13" font-weight="800">このページで見るところ</text>
+      ${text}
+      <path d="M140 103 L160 103 M268 103 L288 103 M396 103 L416 103" stroke="#0b6df2" stroke-width="3" stroke-linecap="round"></path>
+    </svg>`;
+  }
+
+  window.showAdminHelp = function(key) {
+    const help = ADMIN_HELP_CONTENT[key] || ADMIN_HELP_CONTENT.guide;
+    const modal = document.getElementById('adminHelpModal');
+    const title = document.getElementById('adminHelpTitle');
+    const body = document.getElementById('adminHelpBody');
+    if (!modal || !title || !body) return;
+    title.textContent = help.title;
+    body.innerHTML = `
+      ${buildAdminHelpVisual(help.visual)}
+      <ul>${help.bullets.map(item => `<li>${item}</li>`).join('')}</ul>
+      <div class="guide-note">${help.caution}</div>
+    `;
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  window.closeAdminHelp = function() {
+    const modal = document.getElementById('adminHelpModal');
+    if (!modal) return;
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") window.closeAdminHelp();
   });
 
   // --- 以降、HTMLから呼び出せるように window オブジェクトに関数を紐付け ---
