@@ -515,7 +515,7 @@
 
     <div id="tab-data" class="admin-panel">
       <h2>部屋番号一覧の編集</h2>
-      <textarea id="adminRooms"></textarea>
+      <textarea id="adminRooms" oninput="scheduleListsAutoSave()"></textarea>
       <h2>候補日（候補枠）一覧の編集</h2>
       <div class="status-box" style="margin-bottom: 0.85rem;">
         <div style="font-weight: bold; margin-bottom: 0.4rem;">期間で候補日を自動作成</div>
@@ -532,8 +532,8 @@
         </div>
         <div class="small-note" style="margin-top: 0.55rem;">平日は1枠、土曜は夜のみ、日曜は朝・昼・夜を自動生成します。</div>
       </div>
-      <textarea id="adminSlots"></textarea>
-      <button onclick="saveLists()">一覧を保存する</button>
+      <textarea id="adminSlots" oninput="scheduleListsAutoSave()"></textarea>
+      <div id="listAutoSaveStatus" class="small-note" style="margin-top:0.55rem;">変更は自動保存されます。</div>
     </div>
 
     <div id="tab-requests" class="admin-panel">
@@ -680,6 +680,13 @@
   const APP_AUTO_REFRESH_SESSION_KEY = "dormitory-app-last-auto-refresh";
   const APP_UPDATE_SKIP_UA_RE = /Line\/|FBAN|FBAV|Instagram|Twitter/i;
   let appUpdateCheckInFlight = false;
+  let listAutoSaveTimer = null;
+  let listAutoSaveDirty = false;
+  let listAutoSaveInProgress = false;
+  let listAutoSaveQueued = false;
+  let listAutoSavePromise = null;
+  let listAutoSaveVersion = 0;
+  const LIST_AUTO_SAVE_DELAY_MS = 900;
 
   const makeRoundId = () => `round-${Date.now()}`;
   const nowISO = () => new Date().toISOString();
@@ -1130,6 +1137,81 @@
     }
   }
 
+  function setListAutoSaveStatus(message, tone = "idle") {
+    const status = document.getElementById('listAutoSaveStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.style.color = tone === "error" ? "var(--danger)" : (tone === "saving" ? "var(--accent)" : "var(--text-muted)");
+  }
+
+  function readListInputLines(id) {
+    return document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+
+  function applyListInputsToRound(round) {
+    round.rooms = readListInputLines('adminRooms');
+    round.slots = readListInputLines('adminSlots');
+    normalizeParticipants(round);
+  }
+
+  async function runListsAutoSave() {
+    if (listAutoSaveInProgress) {
+      listAutoSaveQueued = true;
+      return listAutoSavePromise || false;
+    }
+    if (!listAutoSaveDirty) return true;
+
+    if (listAutoSaveTimer) {
+      window.clearTimeout(listAutoSaveTimer);
+      listAutoSaveTimer = null;
+    }
+
+    const savingVersion = listAutoSaveVersion;
+    listAutoSaveInProgress = true;
+    setListAutoSaveStatus("自動保存中...", "saving");
+
+    listAutoSavePromise = window.saveLists({ silent: true });
+    const saved = await listAutoSavePromise;
+
+    listAutoSaveInProgress = false;
+    listAutoSavePromise = null;
+
+    if (saved && listAutoSaveVersion === savingVersion) {
+      listAutoSaveDirty = false;
+      setListAutoSaveStatus(`自動保存済み ${new Date().toLocaleTimeString()}`);
+    } else if (!saved) {
+      setListAutoSaveStatus("自動保存に失敗しました。通信状態を確認してください。", "error");
+    }
+
+    if (listAutoSaveQueued) {
+      listAutoSaveQueued = false;
+      return runListsAutoSave();
+    }
+
+    return saved;
+  }
+
+  window.scheduleListsAutoSave = function() {
+    listAutoSaveDirty = true;
+    listAutoSaveVersion++;
+    setListAutoSaveStatus("編集中... 少し待つと自動保存されます。", "saving");
+    if (listAutoSaveTimer) window.clearTimeout(listAutoSaveTimer);
+    listAutoSaveTimer = window.setTimeout(() => {
+      void runListsAutoSave();
+    }, LIST_AUTO_SAVE_DELAY_MS);
+  }
+
+  async function flushListsAutoSaveIfNeeded() {
+    if (!listAutoSaveDirty) return true;
+    return runListsAutoSave();
+  }
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!listAutoSaveDirty && !listAutoSaveInProgress) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
   // --- 以降、HTMLから呼び出せるように window オブジェクトに関数を紐付け ---
 
   window.isDeadlinePassed = function() {
@@ -1310,7 +1392,8 @@
     }
     const slots = buildSlotsByRange(start, end);
     document.getElementById('adminSlots').value = slots.join('\n');
-    alert(`候補日を ${slots.length} 件生成しました。必要なら編集してから保存してください。`);
+    window.scheduleListsAutoSave();
+    alert(`候補日を ${slots.length} 件生成しました。変更は自動保存されます。`);
   }
 
   window.updateAdminSummary = function() {
@@ -1737,7 +1820,7 @@
     window.goToStep1();
   }
 
-  window.toggleAdminMode = function() {
+  window.toggleAdminMode = async function() {
     const toggleBtn = document.getElementById('adminToggle');
     const isAdmin = toggleBtn.checked;
     
@@ -1752,6 +1835,10 @@
         toggleBtn.checked = false;
       }
     } else {
+      if (document.getElementById('tab-data')?.classList.contains('active') && !(await flushListsAutoSaveIfNeeded())) {
+        toggleBtn.checked = true;
+        return;
+      }
       document.getElementById('studentView').style.display = 'block';
       document.getElementById('adminView').style.display = 'none';
       window.renderStudentView();
@@ -1777,11 +1864,15 @@
     }
   }
 
-  window.switchAdminTab = function(tabId) {
+  window.switchAdminTab = async function(tabId) {
+    const leavingListEditor = tabId !== 'tab-data' && document.getElementById('tab-data')?.classList.contains('active');
+    if (leavingListEditor && !(await flushListsAutoSaveIfNeeded())) return;
+
     document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
     document.querySelector(`button[onclick="switchAdminTab('${tabId}')"]`).classList.add('active');
     document.getElementById(tabId).classList.add('active');
+    if (leavingListEditor) window.loadAdminData();
     if (tabId === 'tab-requests') window.renderAdminRequests();
     if (tabId === 'tab-participants') window.filterParticipantRows();
     if (tabId === 'tab-cancel-lottery') window.renderLotteryCancelPanel();
@@ -1837,6 +1928,12 @@
     }
     document.getElementById('adminRooms').value = (round.rooms || []).join('\n');
     document.getElementById('adminSlots').value = (round.slots || []).join('\n');
+    listAutoSaveDirty = false;
+    if (listAutoSaveTimer) {
+      window.clearTimeout(listAutoSaveTimer);
+      listAutoSaveTimer = null;
+    }
+    setListAutoSaveStatus("変更は自動保存されます。");
     const startInput = document.getElementById('slotStartDate');
     const endInput = document.getElementById('slotEndDate');
     if (startInput && endInput) {
@@ -1970,23 +2067,25 @@
     const idxEl = document.getElementById('adminPointerIndexDisplay');
     if (idxEl) idxEl.textContent = (idxOnActive >= 0) ? String(idxOnActive) : '-';
 
-    if (!(await saveData())) return;
+    if (!(await saveData())) return false;
     window.updateAdminSummary();
     scheduleAutoLotteryTimer();
     void maybeAutoRunLottery("deadline-updated");
   }
 
-  window.saveLists = async function() {
+  window.saveLists = async function(options = {}) {
+    const { silent = false } = options || {};
     const round = getActiveRound();
-    round.rooms = document.getElementById('adminRooms').value.split('\n').map(s => s.trim()).filter(s => s);
-    round.slots = document.getElementById('adminSlots').value.split('\n').map(s => s.trim()).filter(s => s);
+    applyListInputsToRound(round);
 
-    // 新しい部屋が追加された場合の初期化
-    normalizeParticipants(round);
-
-    if (!(await saveData())) return;
+    if (!(await saveData())) return false;
+    if (silent) {
+      window.updateAdminSummary();
+      return true;
+    }
     window.loadAdminData();
     alert("更新しました。");
+    return true;
   }
 
 window.toggleParticipant = async function(room, val) {
