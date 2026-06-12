@@ -625,10 +625,7 @@
         「今回」を履歴として保存してから、部屋番号・候補枠・参加フラグを引き継いだ「次回」を新しく作成できます。
       </p>
       <label>現在編集している回</label>
-      <div class="input-row" style="margin-bottom:0.85rem;">
-        <select id="roundSelect" class="input-inline" style="margin-bottom:0;"></select>
-        <button id="deleteSelectedRoundBtn" class="danger" onclick="deleteSelectedRound()" style="white-space:nowrap;">この回を削除</button>
-      </div>
+      <select id="roundSelect"></select>
       <label>次に作る回の名前</label>
       <div class="input-row" style="margin-bottom:1rem;">
         <input type="text" id="newRoundName" class="input-inline" placeholder="例：2026年6月 第2回" style="margin-bottom:0;">
@@ -729,6 +726,7 @@
       <div class="action-row" style="margin-top: 0; margin-bottom: 1rem;">
         <button onclick="runLottery()">抽選を実行する</button>
         <button id="publishResultsBtn" class="ghost" onclick="publishResultsToStudents()">学生に反映する</button>
+        <button class="danger" onclick="cancelLotteryResults()">抽選結果を取り消す</button>
       </div>
       <div class="status-box" style="margin-bottom: 1rem;">
         <div id="publishStatusText" style="font-weight: 800; margin-bottom: 0.3rem;">学生への反映状況: -</div>
@@ -755,20 +753,6 @@
 
       <button onclick="exportCSV()">CSV出力</button>
 
-      <h2 style="margin-top:1.5rem;">抽選結果の取り消し</h2>
-      <div class="danger-panel">
-        <p style="font-size: 0.9rem; margin-bottom: 0.6rem;">
-          管理者確認用の割当結果を取り消すと、すべての候補枠の担当が未定に戻ります。学生に反映済みの結果は、この操作だけでは変わりません。
-        </p>
-        <div class="small-note" id="cancelLotterySummary">現在の割当: -</div>
-      </div>
-      <div class="table-container" style="margin-bottom: 1rem;">
-        <table id="cancelLotteryTable">
-          <thead><tr><th>候補枠</th><th>現在の担当</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <button class="danger" onclick="cancelLotteryResults()">抽選結果を取り消す</button>
     </div>
 
     <div id="tab-history" class="admin-panel">
@@ -1658,7 +1642,7 @@
         "開始ポインタは、抽選で誰を起点にするかの設定です。",
         "次回を作るときは、先に「次に作る回の名前」を入力してから作成します。"
       ],
-      caution: "回の削除は元に戻せません。不要な回か確認してから押してください。"
+      caution: "過去回を削除したい場合は、履歴タブから削除できます。"
     },
     participants: {
       title: "参加フラグタブでやること",
