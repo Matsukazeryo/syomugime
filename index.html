@@ -82,6 +82,16 @@
     button.ghost:hover { background-color: #daeaff; }
     button.danger { background-color: var(--danger); color: white !important; }
     button.danger:hover { background-color: #c92a2a; }
+    button.attention-publish {
+      background: var(--warn);
+      color: #fff;
+      border: 1px solid #d07800;
+      box-shadow: 0 10px 20px rgba(240, 140, 0, 0.22);
+      min-height: 50px;
+      padding: 0.8rem 1.2rem;
+      font-weight: 900;
+    }
+    button.attention-publish:hover { background: #d97800; }
     button:disabled { background-color: #c6d0dc; cursor: not-allowed; }
     .student-submit-btn {
       min-width: 180px;
@@ -392,6 +402,18 @@
       padding: 1rem;
       margin-bottom: 1rem;
     }
+    .unpublished-warning {
+      display: none;
+      border: 1px solid #f5d28c;
+      border-left: 5px solid var(--warn);
+      background: #fff8e8;
+      color: #684200;
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      margin-bottom: 1rem;
+      font-weight: 800;
+    }
+    .unpublished-warning.active { display: block; }
 
     /* ローディング画面 */
     #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(246,250,255,0.88); display: flex; justify-content: center; align-items: center; z-index: 9999; font-size: 1.15rem; font-weight: bold; color: var(--primary); }
@@ -564,7 +586,6 @@
       <button class="admin-tab" onclick="switchAdminTab('tab-data')">名簿・枠</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-requests')">希望状況</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-lottery')">抽選・結果</button>
-      <button class="admin-tab" onclick="switchAdminTab('tab-cancel-lottery')">抽選取り消し</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-history')">履歴</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-guide')">使い方</button>
     </div>
@@ -702,9 +723,12 @@
     <div id="tab-lottery" class="admin-panel">
       <button type="button" class="panel-help-button" onclick="showAdminHelp('lottery')" aria-label="抽選・結果のヘルプ">?</button>
       <h2>抽選の実行</h2>
+      <div id="unpublishedWarning" class="unpublished-warning">
+        未反映の抽選結果があります。内容を確認したら、必ず「学生に反映する」を押してください。
+      </div>
       <div class="action-row" style="margin-top: 0; margin-bottom: 1rem;">
         <button onclick="runLottery()">抽選を実行する</button>
-        <button class="ghost" onclick="publishResultsToStudents()">学生に反映する</button>
+        <button id="publishResultsBtn" class="ghost" onclick="publishResultsToStudents()">学生に反映する</button>
       </div>
       <div class="status-box" style="margin-bottom: 1rem;">
         <div id="publishStatusText" style="font-weight: 800; margin-bottom: 0.3rem;">学生への反映状況: -</div>
@@ -730,11 +754,8 @@
       </div>
 
       <button onclick="exportCSV()">CSV出力</button>
-    </div>
 
-    <div id="tab-cancel-lottery" class="admin-panel">
-      <button type="button" class="panel-help-button" onclick="showAdminHelp('cancel')" aria-label="抽選取り消しのヘルプ">?</button>
-      <h2>抽選取り消し</h2>
+      <h2 style="margin-top:1.5rem;">抽選結果の取り消し</h2>
       <div class="danger-panel">
         <p style="font-size: 0.9rem; margin-bottom: 0.6rem;">
           管理者確認用の割当結果を取り消すと、すべての候補枠の担当が未定に戻ります。学生に反映済みの結果は、この操作だけでは変わりません。
@@ -1026,6 +1047,7 @@
 <抽選・結果>
 締切時刻になったら
 抽選を実行→学生に反映
+抽選結果の取り消しもこのタブで行う
 結果はエクセルでも開けます。（CSV出力）`;
 
   // db v2: 複数回（round）を扱う
@@ -1295,6 +1317,12 @@
     return slots.some(slot => (draft[slot] || "") !== (published[slot] || ""));
   }
 
+  function hasUnpublishedDraft(round) {
+    const draftCount = countAssignedEntries(getDraftAssignments(round));
+    const publishedCount = countAssignedEntries(getPublishedAssignments(round));
+    return (publishedCount === 0 && draftCount > 0) || haveDraftChanges(round);
+  }
+
   function getActiveRound() {
     if (!db.currentRoundId || !db.rounds?.[db.currentRoundId]) {
       // フォールバック（万一）
@@ -1446,10 +1474,8 @@
             if (document.getElementById('tab-lottery').classList.contains('active')) {
               window.renderAdminResultTable();
               window.renderAdminRankTable();
-              window.renderPublishStatus();
-            }
-            if (document.getElementById('tab-cancel-lottery').classList.contains('active')) {
               window.renderLotteryCancelPanel();
+              window.renderPublishStatus();
             }
           } else {
             if (document.getElementById('step1').classList.contains('active')) {
@@ -1573,7 +1599,8 @@
   }
 
   window.addEventListener("beforeunload", (event) => {
-    if (!listAutoSaveDirty && !listAutoSaveInProgress && !guideAutoSaveDirty && !guideAutoSaveInProgress) return;
+    const hasUnpublishedResult = document.getElementById('adminView')?.style.display !== 'none' && hasUnpublishedDraft(getActiveRound());
+    if (!listAutoSaveDirty && !listAutoSaveInProgress && !guideAutoSaveDirty && !guideAutoSaveInProgress && !hasUnpublishedResult) return;
     event.preventDefault();
     event.returnValue = "";
   });
@@ -1673,12 +1700,13 @@
         "締切後に「抽選を実行する」を押します。",
         "結果はまず管理者確認用として出ます。必要なら担当部屋を手動修正できます。",
         "希望順位一覧で、第何希望になったかを確認できます。",
-        "学生側に見せるには、最後に必ず「学生に反映する」を押します。"
+        "学生側に見せるには、最後に必ず「学生に反映する」を押します。",
+        "取り消したい場合は、同じタブ下部の「抽選結果の取り消し」から戻せます。"
       ],
-      caution: "抽選しただけでは学生側には表示されません。「学生に反映する」までがセットです。"
+      caution: "抽選しただけでは学生側には表示されません。未反映の間はボタンと上部集計に警告が出ます。"
     },
     cancel: {
-      title: "抽選取り消しタブでやること",
+      title: "抽選結果の取り消し欄でやること",
       visual: ["現在の担当", "確認", "取り消し", "未定に戻す"],
       bullets: [
         "管理者確認用の割当結果を一覧で確認できます。",
@@ -1937,7 +1965,12 @@
     const requestEl = document.getElementById('adminSummaryRequests');
     if (requestEl) requestEl.textContent = `${stats.submittedRooms}/${stats.activeRooms || 0}`;
     const assignmentEl = document.getElementById('adminSummaryAssignments');
-    if (assignmentEl) assignmentEl.textContent = `${stats.assignedCount}/${stats.slotCount || 0}`;
+    if (assignmentEl) {
+      const pendingPublish = hasUnpublishedDraft(round);
+      assignmentEl.textContent = `${stats.assignedCount}/${stats.slotCount || 0}${pendingPublish ? '（未反映）' : ''}`;
+      assignmentEl.classList.remove('warn');
+      if (pendingPublish) assignmentEl.classList.add('warn');
+    }
     const deadlineEl = document.getElementById('adminSummaryDeadline');
     if (deadlineEl) {
       deadlineEl.textContent = deadlineIndicator.text;
@@ -1950,10 +1983,25 @@
     const round = getActiveRound();
     const statusEl = document.getElementById('publishStatusText');
     const noteEl = document.getElementById('publishStatusNote');
+    const warningEl = document.getElementById('unpublishedWarning');
+    const publishBtn = document.getElementById('publishResultsBtn');
     if (!statusEl || !noteEl) return;
 
     const draftCount = countAssignedEntries(getDraftAssignments(round));
     const publishedCount = countAssignedEntries(getPublishedAssignments(round));
+    const hasPendingPublish = hasUnpublishedDraft(round);
+
+    if (warningEl) {
+      warningEl.classList.toggle('active', hasPendingPublish);
+      warningEl.textContent = hasPendingPublish
+        ? "未反映の抽選結果があります。内容を確認したら、必ず「学生に反映する」を押してください。"
+        : "抽選結果は学生に反映済みです。";
+    }
+    if (publishBtn) {
+      publishBtn.classList.toggle('attention-publish', hasPendingPublish);
+      publishBtn.classList.toggle('ghost', !hasPendingPublish);
+      publishBtn.textContent = hasPendingPublish ? "学生に反映する（未反映あり）" : "学生に反映する";
+    }
 
     if (draftCount === 0 && publishedCount === 0) {
       statusEl.textContent = "学生への反映状況: 管理者確認用の結果はまだありません";
@@ -1976,6 +2024,16 @@
     const publishedAtText = round.publishedAt ? new Date(round.publishedAt).toLocaleString('ja-JP') : "反映済み";
     statusEl.textContent = "学生への反映状況: 反映済み";
     noteEl.textContent = `${publishedAtText} に現在の結果を学生へ反映しました。`;
+  }
+
+  function focusPublishButtonIfPending() {
+    if (!hasUnpublishedDraft(getActiveRound())) return;
+    const warningEl = document.getElementById('unpublishedWarning');
+    const publishBtn = document.getElementById('publishResultsBtn');
+    if (warningEl) warningEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (publishBtn) {
+      window.setTimeout(() => publishBtn.focus(), 250);
+    }
   }
 
   window.filterParticipantRows = function() {
@@ -2369,6 +2427,13 @@
         toggleBtn.checked = true;
         return;
       }
+      if (hasUnpublishedDraft(getActiveRound())) {
+        const ok = confirm("学生に反映していない抽選結果があります。\n管理者画面を閉じますか？\n\n学生に見せる場合は「抽選・結果」タブで「学生に反映する」を押してください。");
+        if (!ok) {
+          toggleBtn.checked = true;
+          return;
+        }
+      }
       document.getElementById('studentView').style.display = 'block';
       document.getElementById('adminView').style.display = 'none';
       window.renderStudentView();
@@ -2397,8 +2462,13 @@
   window.switchAdminTab = async function(tabId) {
     const leavingListEditor = tabId !== 'tab-data' && document.getElementById('tab-data')?.classList.contains('active');
     const leavingGuideEditor = tabId !== 'tab-guide' && document.getElementById('tab-guide')?.classList.contains('active');
+    const leavingLottery = tabId !== 'tab-lottery' && document.getElementById('tab-lottery')?.classList.contains('active');
     if (leavingListEditor && !(await flushListsAutoSaveIfNeeded())) return;
     if (leavingGuideEditor && !(await flushAdminGuideAutoSaveIfNeeded())) return;
+    if (leavingLottery && hasUnpublishedDraft(getActiveRound())) {
+      const ok = confirm("学生に反映していない抽選結果があります。\nこのまま別のタブへ移動しますか？\n\n学生に見せる場合は「学生に反映する」を押してください。");
+      if (!ok) return;
+    }
 
     document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
@@ -2407,9 +2477,13 @@
     if (leavingListEditor) window.loadAdminData();
     if (tabId === 'tab-requests') window.renderAdminRequests();
     if (tabId === 'tab-participants') window.filterParticipantRows();
-    if (tabId === 'tab-cancel-lottery') window.renderLotteryCancelPanel();
     if (tabId === 'tab-history') window.renderHistoryPanel();
-    if (tabId === 'tab-lottery') window.renderPublishStatus();
+    if (tabId === 'tab-lottery') {
+      window.renderAdminResultTable();
+      window.renderAdminRankTable();
+      window.renderLotteryCancelPanel();
+      window.renderPublishStatus();
+    }
     window.updateAdminSummary();
   }
 
@@ -3068,7 +3142,7 @@ window.setAllParticipants = async function(val) {
     window.updateAdminSummary();
 
     if (showAlert) {
-      const messages = ["抽選完了！学生にはまだ反映されていません。"];
+      const messages = ["抽選完了！学生にはまだ反映されていません。確認後、「学生に反映する」を押してください。"];
       if (unsubmittedCopies.length > 0) {
         messages.push(`未提出 ${unsubmittedCopies.length} 件分は、残りの候補枠からランダムに割り当てました。`);
       }
@@ -3076,6 +3150,7 @@ window.setAllParticipants = async function(val) {
         messages.push(`希望内だけでは埋まらなかったため、${submittedResult.outsideCount} 件は希望外を許可しました。`);
       }
       alert(messages.join("\n"));
+      focusPublishButtonIfPending();
     }
     return true;
   }
