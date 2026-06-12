@@ -237,6 +237,82 @@
     .admin-panel.active { display: block; }
     .password-box { background-color: #f9fbff; padding: 1rem; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1.2rem; }
     .password-box input { margin-bottom: 0.5rem; }
+    .guide-hero {
+      background: linear-gradient(135deg, #f4f9ff 0%, #ffffff 56%, #fff8e8 100%);
+      border: 1px solid #dce7f7;
+      border-radius: 14px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .guide-hero-title {
+      font-size: 1.05rem;
+      font-weight: 900;
+      color: #163b70;
+      margin-bottom: 0.4rem;
+    }
+    .guide-flow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-top: 0.8rem;
+    }
+    .guide-chip {
+      background: #eef5ff;
+      border: 1px solid #cadcfb;
+      color: #1f4f94;
+      border-radius: 999px;
+      padding: 0.25rem 0.55rem;
+      font-size: 0.82rem;
+      font-weight: 800;
+    }
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 0.8rem;
+    }
+    .guide-card {
+      border: 1px solid #e0e8f4;
+      border-radius: 12px;
+      background: #ffffff;
+      padding: 0.95rem;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+    }
+    .guide-card h3 {
+      margin: 0 0 0.55rem;
+      color: #1f3f68;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+    .guide-step {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.55rem;
+      height: 1.55rem;
+      border-radius: 999px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 0.82rem;
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+    .guide-card ul {
+      padding-left: 1.05rem;
+      margin: 0;
+    }
+    .guide-card li {
+      margin-bottom: 0.35rem;
+    }
+    .guide-note {
+      border-left: 4px solid var(--warn);
+      background: #fff8e8;
+      border-radius: 10px;
+      padding: 0.8rem 0.9rem;
+      margin-top: 1rem;
+      color: #684200;
+      font-weight: 700;
+    }
 
     .participant-controls {
       display: grid;
@@ -436,6 +512,7 @@
       <button class="admin-tab" onclick="switchAdminTab('tab-lottery')">抽選・結果</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-cancel-lottery')">抽選取り消し</button>
       <button class="admin-tab" onclick="switchAdminTab('tab-history')">履歴</button>
+      <button class="admin-tab" onclick="switchAdminTab('tab-guide')">使い方</button>
     </div>
     <div id="adminSummaryGrid" class="admin-summary-grid">
       <div class="admin-summary-card">
@@ -639,6 +716,89 @@
       </div>
 
       <button onclick="exportHistoryCSV()">この回をCSV出力</button>
+    </div>
+
+    <div id="tab-guide" class="admin-panel">
+      <h2>管理者側の使い方</h2>
+      <div class="guide-hero">
+        <div class="guide-hero-title">基本の流れ</div>
+        <p class="small-note">
+          上のタブを左から順に確認すると、設定から抽選結果の反映まで進められます。迷ったらこの順番で操作してください。
+        </p>
+        <div class="guide-flow">
+          <span class="guide-chip">設定</span>
+          <span class="guide-chip">参加フラグ</span>
+          <span class="guide-chip">名簿・枠</span>
+          <span class="guide-chip">希望状況</span>
+          <span class="guide-chip">抽選・結果</span>
+          <span class="guide-chip">履歴</span>
+        </div>
+      </div>
+
+      <div class="guide-grid">
+        <div class="guide-card">
+          <h3><span class="guide-step">1</span>設定</h3>
+          <ul>
+            <li>上の集計カードで、候補枠数・参加部屋数・提出済み数が合っているか確認します。</li>
+            <li>「次に作る回の名前」は、次回を作る前に入力します。例：2026年6月 第2回。</li>
+            <li>締切日時は、希望提出を止めたい日時を入れます。目安は開始日の4日前くらいです。</li>
+            <li>開始ポインタは、抽選の起点にする部屋番号です。</li>
+          </ul>
+        </div>
+
+        <div class="guide-card">
+          <h3><span class="guide-step">2</span>参加フラグ</h3>
+          <ul>
+            <li>今回の抽選に入れる部屋はON、除外する部屋はOFFにします。</li>
+            <li>委員会生・休学者・免除対象者などはOFFにします。</li>
+            <li>長期休み前後などは、候補枠数に合わせて参加人数を調整します。</li>
+            <li>候補枠が参加部屋数より多い場合、追加で当たる部屋は2つ分の希望を出せます。</li>
+          </ul>
+        </div>
+
+        <div class="guide-card">
+          <h3><span class="guide-step">3</span>名簿・枠</h3>
+          <ul>
+            <li>部屋番号一覧は、部屋番号を1行ずつ入力します。</li>
+            <li>候補枠一覧も、候補日や枠名を1行ずつ入力します。</li>
+            <li>この画面は自動保存です。下に「自動保存済み」と出れば反映済みです。</li>
+            <li>基本は、候補枠数と参加フラグONの数が一致するようにします。</li>
+          </ul>
+        </div>
+
+        <div class="guide-card">
+          <h3><span class="guide-step">4</span>希望状況</h3>
+          <ul>
+            <li>各部屋の第1〜第5希望と、候補枠ごとの希望人数を確認できます。</li>
+            <li>未提出者の部屋番号一覧は、そのままコピーして連絡に使えます。</li>
+            <li>「110①」「110②」のような表示は、同じ部屋が2回当たる可能性があるときの区別です。</li>
+          </ul>
+        </div>
+
+        <div class="guide-card">
+          <h3><span class="guide-step">5</span>抽選・結果</h3>
+          <ul>
+            <li>締切後に「抽選を実行する」を押します。</li>
+            <li>結果はまず管理者確認用として表示されます。必要なら手動で修正できます。</li>
+            <li>学生に見せるには、必ず「学生に反映する」を押します。</li>
+            <li>CSV出力すると、結果をExcelなどで開けます。</li>
+          </ul>
+        </div>
+
+        <div class="guide-card">
+          <h3><span class="guide-step">6</span>履歴・次回</h3>
+          <ul>
+            <li>履歴では、保存済みの過去回の結果を確認できます。</li>
+            <li>不要な回は履歴または設定から削除できます。最後の1回は削除できません。</li>
+            <li>「今回を保存して次回を作成」を押すと、部屋番号・候補枠・参加フラグを引き継いだ次回を作れます。</li>
+            <li>次回では希望状況と抽選結果は空になります。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="guide-note">
+        注意：抽選後すぐに学生側へ出るわけではありません。内容を確認してから「学生に反映する」を押すと、学生側に結果が表示されます。
+      </div>
     </div>
   </div>
 </div>
