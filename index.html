@@ -286,67 +286,23 @@
       font-size: 0.82rem;
       font-weight: 800;
     }
-    .guide-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 0.8rem;
-    }
-    .guide-card {
-      border: 1px solid #e0e8f4;
-      border-radius: 12px;
-      background: #ffffff;
-      padding: 0.95rem;
-      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
-    }
-    .guide-card h3 {
-      margin: 0 0 0.55rem;
-      color: #1f3f68;
-      display: flex;
-      align-items: center;
-      gap: 0.45rem;
-    }
-    .guide-step {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 1.55rem;
-      height: 1.55rem;
-      border-radius: 999px;
-      background: var(--primary);
-      color: #fff;
-      font-size: 0.82rem;
-      font-weight: 900;
-      flex: 0 0 auto;
-    }
-    .guide-card ul {
-      padding-left: 1.05rem;
-      margin: 0;
-    }
-    .guide-card li {
-      margin-bottom: 0.35rem;
-    }
-    .guide-visual-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
-      gap: 0.9rem;
-      margin: 1rem 0;
-    }
-    .guide-visual-card {
+    .guide-editor-box {
       border: 1px solid #dce7f7;
       border-radius: 14px;
       background: #fbfdff;
-      padding: 0.75rem;
+      padding: 1rem;
     }
-    .guide-visual-card h3 {
-      margin: 0 0 0.55rem;
-      color: #1f3f68;
+    .guide-editor-box textarea {
+      min-height: 520px;
+      line-height: 1.75;
+      font-size: 1rem;
+      white-space: pre-wrap;
     }
-    .guide-visual {
-      width: 100%;
-      display: block;
-      border-radius: 10px;
-      background: #fff;
-      border: 1px solid #e5edf7;
+    #tab-guide > .guide-hero,
+    #tab-guide > .guide-visual-grid,
+    #tab-guide > .guide-grid,
+    #tab-guide > .guide-note {
+      display: none;
     }
     .help-modal {
       position: fixed;
@@ -401,14 +357,6 @@
     }
     .help-body li {
       margin-bottom: 0.35rem;
-    }
-    .help-mini-visual {
-      width: 100%;
-      display: block;
-      margin: 0.55rem 0 0.8rem;
-      border: 1px solid #e5edf7;
-      border-radius: 12px;
-      background: #fff;
     }
     .guide-note {
       border-left: 4px solid var(--warn);
@@ -834,6 +782,13 @@
     <div id="tab-guide" class="admin-panel">
       <button type="button" class="panel-help-button" onclick="showAdminHelp('guide')" aria-label="使い方のヘルプ">?</button>
       <h2>管理者側の使い方</h2>
+      <div class="guide-editor-box">
+        <p class="small-note" style="margin-bottom:0.65rem;">
+          この文章は自由に編集できます。変更すると自動保存されます。
+        </p>
+        <textarea id="adminGuideEditor" oninput="scheduleAdminGuideAutoSave()" spellcheck="false"></textarea>
+        <div id="adminGuideSaveStatus" class="small-note" style="margin-top:0.55rem;">変更は自動保存されます。</div>
+      </div>
       <div class="guide-hero">
         <div class="guide-hero-title">基本の流れ</div>
         <p class="small-note">
@@ -1050,6 +1005,28 @@
 
   const initialRooms = ["113","201","206","207","210","216","218","219","220","221","224","225","226","227","228","230","302","303","304","305","308","314","316","318","322","325","326","327","328","329","330","401","402","408","412","418","420","421","423","425","426","428","429","430","501","504","505","508","510","513","514","515","516","519","520","521","522","523","524","525","526","527"];
   const initialSlots = ["2025年6月23日(月)","2025年6月24日(火)","2025年6月25日(水)","2025年6月26日(木)","2025年6月27日(金)","2025年6月29日(日)朝","2025年6月29日(日)昼","2025年6月29日(日)夜","2025年6月30日(月)","2025年7月1日(火)","2025年7月2日(水)","2025年7月3日(木)","2025年7月4日(金)","2025年7月6日(日)朝","2025年7月6日(日)昼","2025年7月6日(日)夜","2025年7月7日(月)"];
+  const DEFAULT_ADMIN_GUIDE_TEXT = `<設定>
+集計カードの候補枠数と参加部屋数を一致させる
+日付〜日付で候補枠を作成
+締切は開始日の4日前ぐらい
+開始ポインタで誰を起点とするか決める
+
+<参加フラグ>
+委員会生・休学者の人は免除
+その他調整用
+
+<名簿・枠>
+名簿は部屋番号管理で、退寮者と入寮者がきたら変更
+枠は日付で、枠の数＝参加フラグオンの数になるようにする
+長期休み前後は柔軟に調整する
+
+<希望状況>
+現在の希望状況や未提出者を確認可能
+
+<抽選・結果>
+締切時刻になったら
+抽選を実行→学生に反映
+結果はエクセルでも開けます。（CSV出力）`;
 
   // db v2: 複数回（round）を扱う
   // 互換のため、旧形式（rooms/slots/...直下）も起動時に自動でv2へ移行する
@@ -1069,6 +1046,10 @@
   let listAutoSavePromise = null;
   let listAutoSaveVersion = 0;
   const LIST_AUTO_SAVE_DELAY_MS = 900;
+  let guideAutoSaveTimer = null;
+  let guideAutoSaveDirty = false;
+  let guideAutoSaveInProgress = false;
+  const GUIDE_AUTO_SAVE_DELAY_MS = 900;
 
   const makeRoundId = () => `round-${Date.now()}`;
   const nowISO = () => new Date().toISOString();
@@ -1357,6 +1338,7 @@
 
   function normalizeDatabaseForSave() {
     Object.values(db.rounds || {}).forEach(round => normalizeParticipants(round));
+    if (typeof db.adminGuideText !== "string") db.adminGuideText = DEFAULT_ADMIN_GUIDE_TEXT;
   }
 
   function migrateIfNeeded() {
@@ -1380,6 +1362,7 @@
 
       db = {
         adminPassword,
+        adminGuideText: typeof db.adminGuideText === "string" ? db.adminGuideText : DEFAULT_ADMIN_GUIDE_TEXT,
         currentRoundId: rid,
         rounds: { [rid]: round },
         historyOrder: [rid]
@@ -1411,6 +1394,7 @@
     const round = getActiveRound();
     normalizeParticipants(round);
     if (!db.adminPassword) db.adminPassword = "admin";
+    if (typeof db.adminGuideText !== "string") db.adminGuideText = DEFAULT_ADMIN_GUIDE_TEXT;
   }
 
   // アプリ起動時のデータ読み込み
@@ -1434,7 +1418,7 @@
         };
         round.rooms.forEach(r => round.participants[r] = { isParticipating: true, requests: [], requestSets: {} });
 
-        db = { adminPassword: "admin", currentRoundId: rid, rounds: { [rid]: round }, historyOrder: [rid] };
+        db = { adminPassword: "admin", adminGuideText: DEFAULT_ADMIN_GUIDE_TEXT, currentRoundId: rid, rounds: { [rid]: round }, historyOrder: [rid] };
         normalizeDatabaseForSave();
         await dbRef.set(db);
       } else {
@@ -1523,7 +1507,7 @@
     const status = document.getElementById('listAutoSaveStatus');
     if (!status) return;
     status.textContent = message;
-    status.style.color = tone === "error" ? "var(--danger)" : (tone === "saving" ? "var(--accent)" : "var(--text-muted)");
+    status.style.color = tone === "error" ? "var(--danger)" : (tone === "saving" ? "var(--primary)" : "var(--text-muted)");
   }
 
   function readListInputLines(id) {
@@ -1589,10 +1573,53 @@
   }
 
   window.addEventListener("beforeunload", (event) => {
-    if (!listAutoSaveDirty && !listAutoSaveInProgress) return;
+    if (!listAutoSaveDirty && !listAutoSaveInProgress && !guideAutoSaveDirty && !guideAutoSaveInProgress) return;
     event.preventDefault();
     event.returnValue = "";
   });
+
+  function setAdminGuideSaveStatus(message, tone = "idle") {
+    const status = document.getElementById('adminGuideSaveStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.style.color = tone === "error" ? "var(--danger)" : (tone === "saving" ? "var(--primary)" : "var(--text-muted)");
+  }
+
+  async function saveAdminGuideText() {
+    const editor = document.getElementById('adminGuideEditor');
+    if (!editor) return true;
+    guideAutoSaveInProgress = true;
+    setAdminGuideSaveStatus("自動保存中...", "saving");
+    db.adminGuideText = editor.value;
+    const saved = await saveData();
+    guideAutoSaveInProgress = false;
+    if (saved) {
+      guideAutoSaveDirty = false;
+      setAdminGuideSaveStatus(`自動保存済み ${new Date().toLocaleTimeString()}`);
+    } else {
+      setAdminGuideSaveStatus("自動保存に失敗しました。通信状態を確認してください。", "error");
+    }
+    return saved;
+  }
+
+  window.scheduleAdminGuideAutoSave = function() {
+    guideAutoSaveDirty = true;
+    setAdminGuideSaveStatus("編集中... 少し待つと自動保存されます。", "saving");
+    if (guideAutoSaveTimer) window.clearTimeout(guideAutoSaveTimer);
+    guideAutoSaveTimer = window.setTimeout(() => {
+      guideAutoSaveTimer = null;
+      void saveAdminGuideText();
+    }, GUIDE_AUTO_SAVE_DELAY_MS);
+  }
+
+  async function flushAdminGuideAutoSaveIfNeeded() {
+    if (!guideAutoSaveDirty) return true;
+    if (guideAutoSaveTimer) {
+      window.clearTimeout(guideAutoSaveTimer);
+      guideAutoSaveTimer = null;
+    }
+    return saveAdminGuideText();
+  }
 
   const ADMIN_HELP_CONTENT = {
     settings: {
@@ -1685,26 +1712,6 @@
     }
   };
 
-  function buildAdminHelpVisual(labels) {
-    const items = labels || [];
-    const xPositions = [38, 166, 294, 422];
-    const color = ["#eef5ff", "#fff8e8", "#f1f8f4", "#fff1f1"];
-    const stroke = ["#cadcfb", "#f5d28c", "#b9dfc4", "#f4c2c2"];
-    const text = items.map((label, index) => {
-      const x = xPositions[index] || 38;
-      const fill = color[index] || "#eef5ff";
-      const border = stroke[index] || "#cadcfb";
-      return `<rect x="${x}" y="76" width="100" height="54" rx="12" fill="${fill}" stroke="${border}"></rect><text x="${x + 50}" y="108" fill="#1f3f68" font-size="14" font-weight="900" text-anchor="middle">${label}</text>`;
-    }).join("");
-    return `<svg class="help-mini-visual" viewBox="0 0 560 176" role="img" aria-label="ヘルプ図解">
-      <rect x="0" y="0" width="560" height="176" fill="#fbfdff"></rect>
-      <rect x="22" y="24" width="516" height="124" rx="16" fill="#fff" stroke="#dce7f7"></rect>
-      <text x="42" y="52" fill="#5b6775" font-size="13" font-weight="800">このページで見るところ</text>
-      ${text}
-      <path d="M140 103 L160 103 M268 103 L288 103 M396 103 L416 103" stroke="#0b6df2" stroke-width="3" stroke-linecap="round"></path>
-    </svg>`;
-  }
-
   window.showAdminHelp = function(key) {
     const help = ADMIN_HELP_CONTENT[key] || ADMIN_HELP_CONTENT.guide;
     const modal = document.getElementById('adminHelpModal');
@@ -1713,7 +1720,6 @@
     if (!modal || !title || !body) return;
     title.textContent = help.title;
     body.innerHTML = `
-      ${buildAdminHelpVisual(help.visual)}
       <ul>${help.bullets.map(item => `<li>${item}</li>`).join('')}</ul>
       <div class="guide-note">${help.caution}</div>
     `;
@@ -2359,6 +2365,10 @@
         toggleBtn.checked = true;
         return;
       }
+      if (document.getElementById('tab-guide')?.classList.contains('active') && !(await flushAdminGuideAutoSaveIfNeeded())) {
+        toggleBtn.checked = true;
+        return;
+      }
       document.getElementById('studentView').style.display = 'block';
       document.getElementById('adminView').style.display = 'none';
       window.renderStudentView();
@@ -2386,7 +2396,9 @@
 
   window.switchAdminTab = async function(tabId) {
     const leavingListEditor = tabId !== 'tab-data' && document.getElementById('tab-data')?.classList.contains('active');
+    const leavingGuideEditor = tabId !== 'tab-guide' && document.getElementById('tab-guide')?.classList.contains('active');
     if (leavingListEditor && !(await flushListsAutoSaveIfNeeded())) return;
+    if (leavingGuideEditor && !(await flushAdminGuideAutoSaveIfNeeded())) return;
 
     document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
@@ -2424,6 +2436,15 @@
     };
 
     document.getElementById('roundName').value = round.name || '';
+    const guideEditor = document.getElementById('adminGuideEditor');
+    if (guideEditor && !guideAutoSaveDirty && !guideAutoSaveInProgress) {
+      guideEditor.value = typeof db.adminGuideText === "string" ? db.adminGuideText : DEFAULT_ADMIN_GUIDE_TEXT;
+      if (guideAutoSaveTimer) {
+        window.clearTimeout(guideAutoSaveTimer);
+        guideAutoSaveTimer = null;
+      }
+      setAdminGuideSaveStatus("変更は自動保存されます。");
+    }
 
     // 通常設定
     document.getElementById('adminDeadline').value = round.deadline || "";
